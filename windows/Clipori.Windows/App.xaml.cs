@@ -1,8 +1,9 @@
 using System.Windows;
+using MessageBox = System.Windows.MessageBox;
 
 namespace Clipori.Windows;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private System.Threading.Mutex? _mutex;
     private bool _ownsMutex;
