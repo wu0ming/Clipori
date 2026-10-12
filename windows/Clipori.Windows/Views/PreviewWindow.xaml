@@ -1,0 +1,16 @@
+<Window x:Class="Clipori.Windows.Views.PreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Clipori 预览" Width="720" Height="510" WindowStartupLocation="CenterOwner"
+        Background="#FCFAFE" FontFamily="Segoe UI,Microsoft YaHei UI">
+  <Grid Margin="20">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <TextBlock x:Name="TitleText" FontSize="17" FontWeight="SemiBold" Foreground="#4F3D65" Margin="0,0,0,13"/>
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+      <Grid>
+        <TextBox x:Name="ContentText" TextWrapping="Wrap" IsReadOnly="True" Background="Transparent" BorderThickness="0" FontSize="13" Foreground="#4C4554" VerticalScrollBarVisibility="Auto"/>
+        <Image x:Name="ContentImage" Stretch="Uniform" Visibility="Collapsed"/>
+      </Grid>
+    </ScrollViewer>
+  </Grid>
+</Window>

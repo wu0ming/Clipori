@@ -1,0 +1,30 @@
+name: Build Clipori for Windows
+on:
+  push:
+    branches: [ 'windows/wpf-port' ]
+    paths: [ 'windows/**', '.github/workflows/windows-build.yml' ]
+  pull_request:
+    paths: [ 'windows/**', '.github/workflows/windows-build.yml' ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore windows/Clipori.Windows/Clipori.Windows.csproj
+      - name: Compile
+        run: dotnet build windows/Clipori.Windows/Clipori.Windows.csproj --configuration Release --no-restore
+      - name: Publish self-contained x64
+        run: dotnet publish windows/Clipori.Windows/Clipori.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -o publish/Clipori-Windows-win-x64
+      - name: Upload EXE package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clipori-Windows-win-x64
+          path: publish/Clipori-Windows-win-x64/
+          retention-days: 14
