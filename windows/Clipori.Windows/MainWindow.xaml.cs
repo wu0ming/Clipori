@@ -20,6 +20,10 @@ using Button = System.Windows.Controls.Button;
 using TextBox = System.Windows.Controls.TextBox;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using TextDataFormat = System.Windows.TextDataFormat;
+using Color = System.Windows.Media.Color;
+using Brushes = System.Windows.Media.Brushes;
+using MenuItem = System.Windows.Controls.MenuItem;
+using System.IO;
 
 namespace Clipori.Windows;
 
