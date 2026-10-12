@@ -14,6 +14,12 @@ using Clipori.Windows.Models;
 using Clipori.Windows.Services;
 using Clipori.Windows.Views;
 using Forms = System.Windows.Forms;
+using Clipboard = System.Windows.Clipboard;
+using MessageBox = System.Windows.MessageBox;
+using Button = System.Windows.Controls.Button;
+using TextBox = System.Windows.Controls.TextBox;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using TextDataFormat = System.Windows.TextDataFormat;
 
 namespace Clipori.Windows;
 
