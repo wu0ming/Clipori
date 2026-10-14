@@ -1,118 +1,58 @@
-<p align="center">
-  <img src="docs/assets/clipori-icon.png" alt="Clipori 紫色猫咪应用图标" width="112" height="112">
-</p>
-<h1 align="center">Clipori</h1>
-<p align="center"><strong>复制即备忘，想起时就来找回。</strong></p>
-<p align="center">一款轻巧、丝滑、可爱的 Mac AI 剪贴板与备忘录。</p>
+# Windows Clipboard Workspace（暂定项目名称）
 
-<p align="center">
-  <img src="https://img.shields.io/badge/macOS-14%2B-24232F?logo=apple&amp;logoColor=white" alt="macOS 14 或更高版本">
-  <img src="https://img.shields.io/badge/Native-SwiftUI%20%2B%20AppKit-A98BEF" alt="SwiftUI 与 AppKit 原生开发">
-  <img src="https://img.shields.io/badge/AI-OpenAI%20%7C%20Claude-8DCDB4" alt="兼容 OpenAI 与 Claude 格式">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-D5B4EC" alt="Apache 2.0 许可"></a>
-</p>
-<p align="center">
-  <a href="README.md">English</a> · <strong>简体中文</strong><br><br>
-  <a href="https://clipori.panzer-jack.cn/">官网</a> ·
-  <a href="https://github.com/Panzer-Jack/Clipori/releases"><strong>下载 Mac 版</strong></a> ·
-  <a href="#开始使用">开始使用</a> ·
-  <a href="docs/USAGE.zh-CN.md">快捷键与操作</a> ·
-  <a href="docs/DEVELOPMENT.zh-CN.md">构建与贡献</a>
-</p>
+**Windows / WPF 实验性社区移植分支；尚未确定正式品牌名称**
 
-## 演示
+> **非官方独立衍生版本。** 本 Windows 项目受到 [Panzer-Jack 开发的 Clipori](https://github.com/Panzer-Jack/Clipori) 启发，并非原作者的官方 Windows 版本，也不代表原作者为此提供背书。产品名称与图标正在重新设计；当前开发程序仍暂用 `Clipori.Windows.exe`，不代表最终品牌。
 
-用底部卡片栏查看复制记录，支持搜索、编辑和分类。
+[English](README.md) · [Windows 开发说明](windows/README.md) · [手工测试清单](windows/WINDOWS-SMOKE-TEST.md) · [原版 macOS 项目](https://github.com/Panzer-Jack/Clipori)
 
-<p align="center">
-  <img src="docs/assets/clipori-demo.gif" alt="Clipori 产品演示：唤起卡片栏、鼠标悬停时抬升与回弹、单击复制、多选拖入分类、用 AI 找回备忘" width="1200">
-</p>
+## 为什么开发这个分支？
 
-## 功能
+Clipori 将轻量剪贴板与 AI 搜索、可选的自动分类结合起来，把转瞬即逝的复制内容变成可以找回的信息。我很认同这个产品理念，因此尝试将其移植到 Windows 10/11。
 
-- 自动保存复制的文字、链接、代码、截图和图片。
-- `⇧⌘V` 呼出，单击复制，双击粘贴。
-- 多选卡片拖入分类，支持固定记录。
-- 编辑记录、追加备注，也可以创建桌面便笺。
-- AI 搜索与自动分类，支持自定义 OpenAI / Claude 兼容服务。
-- 自定义快捷键、语言、保留期限和忽略应用。
+长期希望进一步探索**注重隐私的 AI 上下文工作空间**：在本地以结构化方式存储原始记录，按需将选定内容导出为 Markdown / JSON 上下文，并探索由用户授权的摘要、分类、去重及关联整理。**这些只是拟议方向，不是当前 Windows 版本的已交付功能。**
 
-## 开始使用
+## Windows 版本进度
 
-**macOS 14 或更高版本 · 支持 Apple Silicon 与 Intel · 安装包无需 Xcode**
+**当前为 WPF 初期源码版本，尚非经过完整验证或签名的正式产品。** 代码已具备部分功能框架，但编译成功不等于实际交互均已验证。
 
-1. **下载应用**：前往 [GitHub Releases](https://github.com/Panzer-Jack/Clipori/releases)，M 系列芯片选择 `arm64`，Intel 选择 `x86_64`。打开 DMG 或解压 ZIP，将 **Clipori.app** 拖入**应用程序**。
-2. **首次启动前**，在「终端」执行以下命令，移除应用的隔离标记：
-
-   ```sh
-   xattr -dr com.apple.quarantine /Applications/Clipori.app
-   ```
-
-3. **唤起卡片栏**：打开 Clipori，按 **`⇧⌘V`**。应用常驻菜单栏，复制文字或图片后便会自动收录。
-4. **开启直接粘贴**：在「系统设置 → 隐私与安全性 → 辅助功能」中开启 Clipori。未授权时仍可复制卡片，切回目标应用按 `⌘V` 粘贴。
-5. **配置 AI**：在「设置 → AI」选择协议，填写接口地址、模型和 API Key，测试后保存。不配置 AI 也能使用历史记录和关键词搜索。
-
-> 早期构建使用临时签名，尚未通过 Apple 公证。如系统拦截了你信任的安装包，可按 [Apple 官方说明](https://support.apple.com/en-us/102445)使用「仍要打开」。如果 Releases 暂无安装包，可先[从源码构建](docs/DEVELOPMENT.zh-CN.md#从源码构建)。
-
-### 基本操作
-
-| 操作 | 效果 |
+| 功能 | 状态 |
 | --- | --- |
-| `⇧⌘V` | 显示或收起卡片栏 |
-| 悬停 | 轻微上浮、高亮，不改变剪贴板 |
-| 单击 | 只选中当前卡片，完整替换剪贴板；面板保持打开 |
-| 双击 / `↩` | 复制并粘贴到打开面板前的应用 |
-| `⌘` 点击 / `⇧` 点击 | 增减选中项 / 连续选择，用于归类 |
-| 拖动选中卡片到分类 | 整组归类 |
-| 空格 / `⌘E` | 预览 / 编辑与追加 |
-| `⌘↩` | 输入问题后让 AI 找回 |
+| Windows 10/11 x64、C# / .NET 10 WPF | 已有初步实现 |
+| 文本、链接、图片采集；代码识别 | 已有初步实现，文件粘贴与代码识别仍需完善 |
+| 本地 SQLite 历史记录及 PNG 缓存 | 已有初步实现 |
+| 浮动卡片栏、全局快捷键、基础搜索、固定及笔记 | 已有初步实现，托盘和交互需验证 |
+| 点击卡片复制 | 代码已实现，使用侧测试显示可复制 |
+| 将内容直接粘贴回之前聚焦的应用 | **已知问题：焦点恢复或模拟粘贴可能失败** |
+| AI 检索、自动分类、Markdown 上下文导出、AI 自动整理 | **Windows 版本尚未实现** |
 
-应用快捷键都可以在「设置 → 快捷键」中修改。[查看全部操作 →](docs/USAGE.zh-CN.md)
+### 近期优先事项（P0/P1）
 
-## 数据与设置
+- **P0 稳定性：** 修复焦点恢复与直接粘贴、增加诊断日志和错误记录、修复托盘图标、点击界面外自动隐藏，以及完善 Windows 手工测试。
+- **P1 格式兼容性：** 补充文件粘贴，改进代码内容识别，并逐步完善与原版的使用体验差距。
+- **后续探索：** 结构化存档浏览、可选 Markdown/JSON 导出（时间、来源、内容类型、用户标签）、AI 上下文选择、经授权的 AI 整理、隐私控制和数据删除。
 
-- 历史记录存储在本机 SQLite，API Key 保存在钥匙串。可暂停记录或忽略指定应用，支持常见剪贴板隐私标记。
-- AI 搜索向你配置的服务发送问题与候选片段；自动分类发送待分类内容，默认关闭。不会发送图片像素。
-- 新安装默认保留 30 天，可选 1 天、1 周、1 个月、1 年或永久。固定记录与 Pinboard 永久保留；升级保留原设置，缩短期限前会确认。
-- 系统首选语言为中文时默认中文，其他情况默认英文，也可以在设置中切换。
-- 卡片图标自动表示内容类型，颜色跟随所属分类。
+本地剪贴板采集与向 AI 服务发送信息必须区分。剪贴板可能包含敏感信息，不应在未经明确同意的情况下将整个数据库发送给第三方 AI。
 
-<details>
-<summary>存储和图片支持的更多细节</summary>
+## Windows 源码构建
 
-数据库位于 `~/Library/Application Support/Clipori/clipori.sqlite`，可从设置打开目录。忽略规则不能识别所有敏感内容。保留期限从最初保存时间计算，编辑不会延长；删除 Pinboard 不会删除其中的记录，但它们会重新适用普通保留规则。
+需要 Windows 10/11 x64 和 .NET 10 SDK。从仓库根目录运行：
 
-支持 PNG、TIFF、JPEG。用 `⌃⇧⌘4` 将选区截图复制到剪贴板；仅保存成文件的截图不会自动收录。保留原始像素尺寸与透明度，浏览时使用小缩略图，复制时提供 PNG/TIFF 给支持图片的应用。为图片添加标题和备注后可以搜索。超过 128 MB 或 8000 万像素时会提示，不会保存。
-
-</details>
-
-## 当前进度
-
-| Mac 已支持 | 后续计划 |
-| --- | --- |
-| 剪贴板历史、截图、编辑、分类、多选拖放、桌面便笺 | iPhone 图片支持与图片同步 |
-| AI 找回、可选自动分类 | iCloud 签名配置与跨设备真机联调 |
-| 自定义快捷键、中英文、保留规则 | Developer ID 签名、公证与应用内更新 |
-
-仓库也包含 **iPhone 本地客户端**和共享 iCloud 组件。跨设备同步尚未达到日常使用状态，两端默认本地保存；目前没有公开的 iPhone 安装包。多选当前用于归类，暂不支持批量粘贴。
-
-## 构建与贡献
-
-```sh
-git clone https://github.com/Panzer-Jack/Clipori.git
-cd Clipori
-./scripts/build-app.sh
-open build/Clipori.app
+```powershell
+cd windows
+.\build-windows.ps1
+.\publish\Clipori-Windows-win-x64\Clipori.Windows.exe
 ```
 
-需要 macOS 14+、Xcode 16+。使用 SwiftUI、AppKit 与 SQLite，没有第三方运行时依赖。
+可执行文件名暂未完成品牌迁移。详见 [Windows 开发说明](windows/README.md) 与 [手工测试清单](windows/WINDOWS-SMOKE-TEST.md)。目前**不宣称已经提供官方或全面验证的 Windows 安装包**。
 
-- [开发、测试、性能基准与全自动发布](docs/DEVELOPMENT.zh-CN.md)
-- [重新生成图标与不含隐私的演示动画](docs/MEDIA.md)
-- [反馈问题或提出建议](https://github.com/Panzer-Jack/Clipori/issues)
+## 原作者、修改说明及许可证
 
-## 许可
+- **原项目：** [Panzer-Jack/Clipori](https://github.com/Panzer-Jack/Clipori)（macOS / SwiftUI）。感谢原作者提供产品理念与开源代码。
+- **Windows 分支：** 在 [`windows/`](windows/) 目录新增独立 WPF/.NET 实现，并规划独立的 Windows 开发方向。
+- **许可证：** 原项目采用 [Apache License 2.0](LICENSE)。重新分发涉及的源码或二进制时，应遵守许可证、署名和修改声明要求。参见 [Windows 署名与修改说明](windows/NOTICE.md)，正式发行前还需要复核第三方依赖的许可。
+- **品牌：** 文中提及 Clipori 是为了说明项目来源，**不代表官方合作或认可**。Windows 版本计划采用独立名称与图标；Apache-2.0 许可本身不授予商标或官方品牌使用权。
 
-[Apache-2.0](LICENSE)。
+Mac 原版的说明、演示与发行包，请查看 [Clipori 原仓库](https://github.com/Panzer-Jack/Clipori)。本分支首页暂不将原作者的猫咪图标用于 Windows 品牌展示。
 
-灵感来源：[Paste](https://pasteapp.io/)。
+_本 README 于 2026-10-14 因 Windows 移植而重写。原版源码的既有版权及署名声明仍属于相应权利人。_
