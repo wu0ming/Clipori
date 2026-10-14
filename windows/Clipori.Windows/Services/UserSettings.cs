@@ -34,7 +34,8 @@ public sealed class UserSettings
     public bool IsExcluded(string processName) =>
         ExcludedApps.Split(',', ';', '\n').Any(p => 
             !string.IsNullOrWhiteSpace(p) &&
-            string.Equals(p.Trim().TrimEnd(".exe"), processName, StringComparison.OrdinalIgnoreCase));
+            string.Equals(p.Trim().EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? p.Trim()[..^4] : p.Trim(),
+                processName, StringComparison.OrdinalIgnoreCase));
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CliporiWindows", "settings.json");
