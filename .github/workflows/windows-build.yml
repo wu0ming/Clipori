@@ -28,6 +28,14 @@ jobs:
         run: dotnet publish windows/Clipori.Windows/Clipori.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -o publish/Clipori-Windows-win-x64
       - name: Build debug edition
         run: dotnet publish windows/Clipori.Windows/Clipori.Windows.csproj -c Debug -r win-x64 --self-contained true -o publish/Clipori-Windows-Debug-win-x64
+      - name: Include Apache license and attribution in distributables
+        shell: pwsh
+        run: |
+          Copy-Item LICENSE publish/Clipori-Windows-win-x64/LICENSE
+          Copy-Item windows/NOTICE.md publish/Clipori-Windows-win-x64/NOTICE.md
+          Copy-Item windows/README.md publish/Clipori-Windows-win-x64/README-Windows.md
+          Copy-Item LICENSE publish/Clipori-Windows-Debug-win-x64/LICENSE
+          Copy-Item windows/NOTICE.md publish/Clipori-Windows-Debug-win-x64/NOTICE.md
       - name: Upload Release artifact
         uses: actions/upload-artifact@v4
         with:
@@ -47,4 +55,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           Compress-Archive -Path 'publish/Clipori-Windows-win-x64/*' -DestinationPath 'Clipori-Windows-v0.2.0-preview.1-win-x64.zip'
-          gh release create v0.2.0-preview.1 'Clipori-Windows-v0.2.0-preview.1-win-x64.zip' --target "${{ github.sha }}" --title 'Clipori for Windows v0.2.0-preview.1' --notes-file windows/RELEASE-NOTES.md --prerelease
+          gh release view v0.2.0-preview.1 --json tagName *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload v0.2.0-preview.1 'Clipori-Windows-v0.2.0-preview.1-win-x64.zip' --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to replace release asset' }
+            gh release edit v0.2.0-preview.1 --notes-file windows/RELEASE-NOTES.md --prerelease
+          } else {
+            gh release create v0.2.0-preview.1 'Clipori-Windows-v0.2.0-preview.1-win-x64.zip' --target "${{ github.sha }}" --title 'Clipori for Windows v0.2.0-preview.1' --notes-file windows/RELEASE-NOTES.md --prerelease
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release command failed' }
