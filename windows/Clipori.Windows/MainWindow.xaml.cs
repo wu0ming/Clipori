@@ -95,7 +95,7 @@ public partial class MainWindow : Window
 
         SourceInitialized += OnSourceInitialized;
         Closing += OnClosing;
-        PauseButton.Content = _paused ? "继续记录" : "暂停记录";
+        PauseButton.Content = _paused ? "▶" : "⏸";
         StatusDot.Fill = _paused ? Brushes.Orange : new SolidColorBrush(Color.FromRgb(107, 202, 160));
         Diagnostics.Info("main.ready", "history=" + _all.Count);
     }
@@ -103,8 +103,8 @@ public partial class MainWindow : Window
     private void PositionShelf()
     {
         Rect screen = SystemParameters.WorkArea;
-        Width = Math.Max(540, Math.Min(1190, screen.Width - 32));
-        Height = 398;
+        Width = Math.Max(540, Math.Min(1240, screen.Width - 32));
+        Height = 438;
         Left = screen.Left + (screen.Width - Width) / 2;
         Top = Math.Max(screen.Top, screen.Bottom - Height - 10);
     }
@@ -274,7 +274,12 @@ public partial class MainWindow : Window
             filtered = filtered.Where(c => (c.Title + "\n" + c.Text + "\n" + c.Source)
                 .Contains(query, StringComparison.OrdinalIgnoreCase));
         _visible.Clear();
-        foreach (var entry in filtered) _visible.Add(entry);
+        int index = 1;
+        foreach (var entry in filtered)
+        {
+            entry.DisplayIndex = index++;
+            _visible.Add(entry);
+        }
         CountLabel.Text = $"{_visible.Count} 条记忆";
         EmptyHint.Visibility = _visible.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         foreach (var b in new[] { AllTab, TextTab, LinkTab, CodeTab, ImageTab, FileTab, PinnedTab }.Concat(_dynamicCategoryButtons))
@@ -370,38 +375,78 @@ public partial class MainWindow : Window
 
     private void PasteEntry(ClipEntry item)
     {
+        if (_pastePending) return;
         try { SetClipboardFromEntry(item); }
         catch (Exception ex)
         {
             Diagnostics.Error("paste.copy", ex);
-            MessageBox.Show(this, "无法复制该内容：" + ex.Message, "Clipori"); return;
+            MessageBox.Show(this, "无法复制该内容：" + ex.Message, "Clipori");
+            return;
         }
+
+        var target = _previousTarget;
+        var focus = _previousFocus;
         _pastePending = true;
-        Hide();
-        IntPtr target = _previousTarget;
-        IntPtr focus = _previousFocus;
+        Hide(); // hide first, so the shelf is no longer the foreground focus owner
         Diagnostics.Info("paste.begin", "kind=" + item.Kind + ";target_valid=" + NativeMethods.IsWindow(target));
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(170) };
+
+        int polls = 0;
+        // Hotkey Ctrl+Alt+V often leaves its modifiers physically down for a moment.
+        // CopyQ waits for modifiers to be released before issuing synthetic input.
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(65) };
         timer.Tick += (_, _) =>
         {
+            ++polls;
+            if (NativeMethods.AnyPasteModifierHeld() && polls < 18)
+                return;
             timer.Stop();
             try
             {
-                if (!NativeMethods.RestoreForegroundAndFocus(target, focus) || !NativeMethods.SendControlV())
+                if (NativeMethods.AnyPasteModifierHeld())
                 {
-                    Diagnostics.Warn("paste.fallback", "foreground_or_input_blocked");
-                    _tray.ShowBalloonTip(3500, "Clipori", "已复制，但目标窗口未接受自动粘贴；请手动按 Ctrl+V。", Forms.ToolTipIcon.Info);
+                    Diagnostics.Warn("paste.fallback", "modifiers_still_held");
+                    NotifyManualPaste();
+                    return;
                 }
-                else
+                bool focused = NativeMethods.RestoreForegroundAndFocus(target, focus);
+                if (!focused)
                 {
-                    Diagnostics.Info("paste.sent", "kind=" + item.Kind);
-                    StatusLabel.Text = "已发送粘贴 · " + item.TypeLabel;
+                    Diagnostics.Warn("paste.fallback", "target_activation_blocked");
+                    NotifyManualPaste();
+                    return;
                 }
+                if (NativeMethods.GetForegroundWindow() != target)
+                {
+                    Diagnostics.Warn("paste.fallback", "foreground_changed_before_send");
+                    NotifyManualPaste();
+                    return;
+                }
+                if (!NativeMethods.SendControlV())
+                {
+                    Diagnostics.Warn("paste.fallback", "send_input_failed;win32=" +
+                        System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+                    NotifyManualPaste();
+                    return;
+                }
+                // SendInput reports injected key events, not confirmation of
+                // successful insertion in the target app.
+                Diagnostics.Info("paste.input-sent", "kind=" + item.Kind + ";target_foreground=true");
+                StatusLabel.Text = "已发送粘贴指令 · " + item.TypeLabel;
             }
-            catch (Exception ex) { Diagnostics.Error("paste.error", ex); }
+            catch (Exception ex)
+            {
+                Diagnostics.Error("paste.error", ex);
+                NotifyManualPaste();
+            }
             finally { _pastePending = false; }
         };
         timer.Start();
+    }
+
+    private void NotifyManualPaste()
+    {
+        StatusLabel.Text = "自动粘贴未完成，可手动按 Ctrl+V";
+        _tray.ShowBalloonTip(3500, "Clipori", "已复制到剪贴板，请切回目标应用按 Ctrl+V。", Forms.ToolTipIcon.Info);
     }
 
     private void Card_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) =>
@@ -626,7 +671,7 @@ public partial class MainWindow : Window
         _settings.CapturePaused = _paused;
         _settings.Save();
         Diagnostics.Info("capture.toggle", "paused=" + _paused);
-        PauseButton.Content = _paused ? "继续记录" : "暂停记录";
+        PauseButton.Content = _paused ? "▶" : "⏸";
         StatusDot.Fill = _paused ? Brushes.Orange : new SolidColorBrush(Color.FromRgb(107, 202, 160));
         StatusLabel.Text = _paused ? "剪贴板记录已暂停" : "正在悄悄记住";
     }
@@ -645,6 +690,18 @@ public partial class MainWindow : Window
             try { DragMove(); } catch (InvalidOperationException) { }
         }
     }
+
+    private void CardsScroller_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (CardsScroller.ExtentWidth <= CardsScroller.ViewportWidth) return;
+        CardsScroller.ScrollToHorizontalOffset(CardsScroller.HorizontalOffset - e.Delta);
+        e.Handled = true;
+    }
+    private void ScrollLeft_Click(object sender, RoutedEventArgs e) =>
+        CardsScroller.ScrollToHorizontalOffset(Math.Max(0, CardsScroller.HorizontalOffset - 520));
+
+    private void ScrollRight_Click(object sender, RoutedEventArgs e) =>
+        CardsScroller.ScrollToHorizontalOffset(CardsScroller.HorizontalOffset + 520);
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {

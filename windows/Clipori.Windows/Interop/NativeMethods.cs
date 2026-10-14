@@ -19,10 +19,11 @@ internal static class NativeMethods
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int command);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
-    [DllImport("user32.dll")] public static extern uint GetCurrentThreadId();
+    [DllImport("kernel32.dll", ExactSpelling = true)] public static extern uint GetCurrentThreadId();
     [DllImport("user32.dll", SetLastError = true)] public static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO info);
     [DllImport("user32.dll", SetLastError = true)] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
     [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int virtualKey);
     [DllImport("user32.dll", SetLastError = true)] public static extern uint SendInput(uint nInputs, [In] INPUT[] inputs, int cbSize);
 
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int left, top, right, bottom; }
@@ -39,6 +40,14 @@ internal static class NativeMethods
     [StructLayout(LayoutKind.Explicit)] public struct InputUnion { [FieldOffset(0)] public KEYBDINPUT ki; }
     [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public UIntPtr dwExtraInfo; }
     private const uint INPUT_KEYBOARD = 1, KEYEVENTF_KEYUP = 0x0002;
+    private const int VK_SHIFT = 0x10, VK_CONTROL = 0x11, VK_MENU = 0x12, VK_LWIN = 0x5B, VK_RWIN = 0x5C;
+
+    public static bool AnyPasteModifierHeld()
+    {
+        foreach (int key in new[] { VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN })
+            if ((GetAsyncKeyState(key) & 0x8000) != 0) return true;
+        return false;
+    }
     private static INPUT Key(ushort key, bool up) => new()
     { type = INPUT_KEYBOARD, u = new InputUnion { ki = new KEYBDINPUT { wVk = key, dwFlags = up ? KEYEVENTF_KEYUP : 0 } } };
 
@@ -56,19 +65,49 @@ internal static class NativeMethods
         return GetGUIThreadInfo(targetThread, ref info) && IsWindow(info.hwndFocus) ? info.hwndFocus : IntPtr.Zero;
     }
 
+    // Window-activation and virtual-key injection follow Win32 techniques used in CopyQ.
+    // AttachThreadInput is always detached, even if focus restoration fails.
     public static bool RestoreForegroundAndFocus(IntPtr target, IntPtr focusedChild)
     {
         if (target == IntPtr.Zero || !IsWindow(target)) return false;
         if (IsIconic(target)) ShowWindow(target, SW_RESTORE);
+
+        // First attempt needs no thread attachment in the common case.
         SetForegroundWindow(target);
+        if (GetForegroundWindow() != target)
+        {
+            // CopyQ also attaches to the current foreground input thread
+            // when ordinary SetForegroundWindow is rejected by Windows.
+            uint thisThread = GetCurrentThreadId(); // kernel32.dll, NOT user32.dll
+            IntPtr foreground = GetForegroundWindow();
+            uint foregroundThread = GetWindowThreadProcessId(foreground, out _);
+            if (foregroundThread == 0 || foregroundThread == thisThread ||
+                !AttachThreadInput(thisThread, foregroundThread, true))
+                return false;
+            try { SetForegroundWindow(target); }
+            finally { AttachThreadInput(thisThread, foregroundThread, false); }
+        }
         if (GetForegroundWindow() != target) return false;
+
+        // Many applications automatically restore their focused child window.
+        // Only explicitly restore focus when it did not come back.
         if (focusedChild == IntPtr.Zero || !IsWindow(focusedChild)) return true;
-        uint owner = GetWindowThreadProcessId(focusedChild, out _);
-        uint current = GetCurrentThreadId();
-        if (owner == current) { SetFocus(focusedChild); return true; }
-        if (!AttachThreadInput(current, owner, true)) return true; // OS may already have restored focus.
+        uint ownerThread = GetWindowThreadProcessId(focusedChild, out _);
+        if (ownerThread == 0) return true;
+        var info = new GUITHREADINFO { cbSize = Marshal.SizeOf<GUITHREADINFO>() };
+        if (GetGUIThreadInfo(ownerThread, ref info) && info.hwndFocus == focusedChild)
+            return true;
+
+        uint currentThread = GetCurrentThreadId();
+        if (ownerThread == currentThread)
+        {
+            SetFocus(focusedChild);
+            return true;
+        }
+        if (!AttachThreadInput(currentThread, ownerThread, true))
+            return true; // Target window is foreground; allow its own focus policy.
         try { SetFocus(focusedChild); }
-        finally { AttachThreadInput(current, owner, false); }
+        finally { AttachThreadInput(currentThread, ownerThread, false); }
         return true;
     }
 

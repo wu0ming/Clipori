@@ -18,6 +18,14 @@ public sealed class ClipEntry : INotifyPropertyChanged
     public string Hash { get; set; } = "";
     public string? ImagePath { get; set; }
     public string CategoryName { get; set; } = "";
+    public string CategoryLabel => string.IsNullOrWhiteSpace(CategoryName) ? "未分类" : CategoryName;
+    private int _displayIndex;
+    public int DisplayIndex
+    {
+        get => _displayIndex;
+        set { _displayIndex = value; Changed(nameof(IndexLabel)); }
+    }
+    public string IndexLabel => DisplayIndex is >= 1 and <= 999 ? DisplayIndex.ToString("00") : "";
     public string Notes { get; set; } = "";
 
     private bool _isPinned;
@@ -66,6 +74,6 @@ public sealed class ClipEntry : INotifyPropertyChanged
         }
     }
     public event PropertyChangedEventHandler? PropertyChanged;
-    public void NotifyChanged() { Changed(nameof(Preview)); Changed(nameof(Title)); Changed(nameof(CategoryName)); }
+    public void NotifyChanged() { Changed(nameof(Preview)); Changed(nameof(Title)); Changed(nameof(CategoryName)); Changed(nameof(CategoryLabel)); }
     private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

@@ -1,4 +1,6 @@
 using Clipori.Windows.Services;
+using Clipori.Windows.Interop;
+using System.Runtime.InteropServices;
 
 static void Check(bool condition, string reason)
 {
@@ -23,4 +25,17 @@ Check(ClipboardClassifier.Classify("我希望周一上午安排一次会议，�
 string secret = "用于测试的中文内容 ☕";
 string encrypted = ProtectionForTests.ProtectString(secret);
 Check(encrypted != secret && ProtectionForTests.UnprotectString(encrypted) == secret, "DPAPI round trip");
+
+Check(OperatingSystem.IsWindows(), "Win32 P/Invoke smoke checks run on Windows");
+Check(NativeLibrary.TryLoad("kernel32.dll", out var kernel), "kernel32.dll loads");
+try
+{
+    Check(NativeLibrary.TryGetExport(kernel, "GetCurrentThreadId", out _),
+        "GetCurrentThreadId export belongs to kernel32.dll");
+}
+finally { NativeLibrary.Free(kernel); }
+Check(NativeMethods.GetCurrentThreadId() > 0,
+    "GetCurrentThreadId P/Invoke resolves and returns a valid thread ID");
+Check(!NativeMethods.RestoreForegroundAndFocus(IntPtr.Zero, IntPtr.Zero),
+    "Missing target window must not receive injected paste");
 Console.WriteLine("All Clipori Windows regression checks passed.");
