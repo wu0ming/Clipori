@@ -12,6 +12,7 @@ internal static class Diagnostics
     private const long MaxBytes = 4 * 1024 * 1024;
 
     public static string DirectoryPath => Folder;
+    public static bool Verbose { get; set; } = true;
     public static void Info(string name, string details = "") => Write("INFO", name, details);
     public static void Warn(string name, string details = "") => Write("WARN", name, details);
     public static void Error(string name, Exception exception) =>
@@ -29,6 +30,7 @@ internal static class Diagnostics
 
     private static void Write(string level, string name, string details)
     {
+        if (!Verbose && level == "INFO") return;
         try
         {
             lock (Gate)

@@ -27,6 +27,20 @@ public sealed class ClipRepository
         cmd.ExecuteNonQuery();
         EnsureColumn(db, "category", "TEXT NOT NULL DEFAULT ''");
         EnsureColumn(db, "notes", "TEXT NOT NULL DEFAULT ''");
+        using (var query = db.CreateCommand())
+        {
+            query.CommandText = "PRAGMA table_info(categories)";
+            using var r = query.ExecuteReader();
+            bool existing = false;
+            while (r.Read()) if (r.GetString(1) == "pinboard") existing = true;
+            r.Close();
+            if (!existing)
+            {
+                using var alter = db.CreateCommand();
+                alter.CommandText = "ALTER TABLE categories ADD COLUMN pinboard INTEGER NOT NULL DEFAULT 0";
+                alter.ExecuteNonQuery();
+            }
+        }
     }
 
     private static void EnsureColumn(SqliteConnection db, string name, string definition)
@@ -46,21 +60,29 @@ public sealed class ClipRepository
     }
     private SqliteConnection Open() { var db = new SqliteConnection(ConnectionString); db.Open(); return db; }
 
-    public List<(string Name, string Color)> Categories()
+    public List<(string Name, string Color, bool Pinboard)> Categories()
     {
-        var result = new List<(string, string)>();
+        var result = new List<(string, string, bool)>();
         using var db = Open(); using var c = db.CreateCommand();
-        c.CommandText = "SELECT name,color FROM categories ORDER BY rowid ASC";
+        c.CommandText = "SELECT name,color,pinboard FROM categories ORDER BY rowid ASC";
         using var r = c.ExecuteReader();
-        while (r.Read()) result.Add((r.GetString(0), r.GetString(1)));
+        while (r.Read()) result.Add((r.GetString(0), r.GetString(1), r.GetInt32(2) != 0));
         return result;
     }
-    public void AddCategory(string name, string color = "#AE90DB")
+    public void AddCategory(string name, string color = "#AE90DB", bool pinboard = false)
     {
         using var db = Open(); using var c = db.CreateCommand();
-        c.CommandText = "INSERT OR IGNORE INTO categories(name,color) VALUES($name,$color)";
+        c.CommandText = "INSERT OR IGNORE INTO categories(name,color,pinboard) VALUES($name,$color,$pinboard)";
         c.Parameters.AddWithValue("$name", name); c.Parameters.AddWithValue("$color", color);
+        c.Parameters.AddWithValue("$pinboard", pinboard ? 1 : 0);
         c.ExecuteNonQuery();
+    }
+    public void SetCategoryColor(string name, string color)
+    {
+        using var db = Open(); using var cmd = db.CreateCommand();
+        cmd.CommandText = "UPDATE categories SET color=$color WHERE name=$name";
+        cmd.Parameters.AddWithValue("$name", name); cmd.Parameters.AddWithValue("$color", color);
+        cmd.ExecuteNonQuery();
     }
     public void DeleteCategory(string name)
     {
@@ -177,13 +199,13 @@ public sealed class ClipRepository
             string cutoff = DateTime.UtcNow.AddDays(-retentionDays).ToString("O");
             using (var query = db.CreateCommand())
             {
-                query.CommandText = "SELECT image_path FROM clips WHERE pinned=0 AND created_utc < $cutoff AND image_path IS NOT NULL";
+                query.CommandText = "SELECT image_path FROM clips WHERE pinned=0 AND category NOT IN (SELECT name FROM categories WHERE pinboard=1) AND created_utc < $cutoff AND image_path IS NOT NULL";
                 query.Parameters.AddWithValue("$cutoff", cutoff);
                 using var reader = query.ExecuteReader();
                 while (reader.Read()) expiredImages.Add(reader.GetString(0));
             }
             using var cmd = db.CreateCommand();
-            cmd.CommandText = "DELETE FROM clips WHERE pinned=0 AND created_utc < $cutoff";
+            cmd.CommandText = "DELETE FROM clips WHERE pinned=0 AND category NOT IN (SELECT name FROM categories WHERE pinboard=1) AND created_utc < $cutoff";
             cmd.Parameters.AddWithValue("$cutoff", cutoff); cmd.ExecuteNonQuery();
         }
         foreach (var path in expiredImages) { try { File.Delete(path); } catch { } }

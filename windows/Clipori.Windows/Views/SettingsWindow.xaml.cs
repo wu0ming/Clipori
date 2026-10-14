@@ -34,8 +34,22 @@ public partial class SettingsWindow : Window
     {
         string name = NewCategoryName.Text.Trim();
         if (name.Length is < 1 or > 32) { MessageBox.Show(this, "分类名称限制为 1–32 字符。"); return; }
-        _repository.AddCategory(name);
+        if (!ValidColor()) return;
+        _repository.AddCategory(name, CategoryColor.Text.Trim(), CreatePinboard.IsChecked == true);
         CategoriesChanged = true; NewCategoryName.Clear(); RefreshCategories();
+    }
+    private bool ValidColor()
+    {
+        if (System.Text.RegularExpressions.Regex.IsMatch(CategoryColor.Text.Trim(), "^#[0-9A-Fa-f]{6}$")) return true;
+        MessageBox.Show(this, "颜色必须是 #RRGGBB，例如 #AE90DB。");
+        return false;
+    }
+    private void UpdateCategoryColor_Click(object sender, RoutedEventArgs e)
+    {
+        if (CategoryList.SelectedItem is not string name || !ValidColor()) return;
+        _repository.SetCategoryColor(name, CategoryColor.Text.Trim());
+        CategoriesChanged = true;
+        RefreshCategories();
     }
     private void DeleteCategory_Click(object sender, RoutedEventArgs e)
     {

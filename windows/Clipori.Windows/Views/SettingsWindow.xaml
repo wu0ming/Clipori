@@ -34,7 +34,13 @@
      <Button Content="添加分类" DockPanel.Dock="Right" Click="AddCategory_Click" Padding="12,6" Margin="8,0,0,0"/>
      <TextBox x:Name="NewCategoryName" Padding="7,5" ToolTip="输入分类名称"/>
     </DockPanel>
+    <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+      <TextBlock Text="颜色 #" VerticalAlignment="Center" Margin="0,0,8,0"/>
+      <TextBox x:Name="CategoryColor" Width="100" Text="#AE90DB" Padding="7,5" Margin="0,0,14,0"/>
+      <CheckBox x:Name="CreatePinboard" Content="建立 Pinboard（永久保留其中的记录）" VerticalAlignment="Center"/>
+    </StackPanel>
     <ListBox x:Name="CategoryList" Height="90" Margin="0,0,0,8"/>
+    <Button Content="更新选中分类颜色" HorizontalAlignment="Left" Padding="10,5" Click="UpdateCategoryColor_Click" Margin="0,0,0,9"/>
     <Button Content="删除选中分类（保留其中的历史记录）" Click="DeleteCategory_Click" HorizontalAlignment="Left" Padding="10,5" Margin="0,0,0,10"/>
     <Separator/>
     <TextBlock Text="诊断与调试" FontWeight="Bold" Margin="0,12,0,6"/>

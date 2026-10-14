@@ -69,6 +69,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _settings = UserSettings.Load();
+        Diagnostics.Verbose = _settings.DiagnosticsEnabled;
         _paused = _settings.CapturePaused;
         _repository = new ClipRepository();
         _repository.Prune(_settings.RetentionDays);
@@ -281,6 +282,14 @@ public partial class MainWindow : Window
             bool active = string.Equals(b.Tag?.ToString(), _category, StringComparison.Ordinal);
             b.Background = active ? new SolidColorBrush(Color.FromRgb(235, 225, 249)) : Brushes.Transparent;
             b.Foreground = active ? new SolidColorBrush(Color.FromRgb(113, 81, 173)) : new SolidColorBrush(Color.FromRgb(123, 115, 136));
+            if (!active && (b.Tag?.ToString() ?? "").StartsWith("category:"))
+            {
+                string catName = (b.Tag?.ToString() ?? "")["category:".Length..];
+                string? color = _repository.Categories().FirstOrDefault(c => c.Name == catName).Color;
+                if (color != null)
+                    try { b.Foreground = new SolidColorBrush((Color)System.Windows.Media.ColorConverter.ConvertFromString(color)); }
+                    catch { }
+            }
         }
     }
 
@@ -520,7 +529,7 @@ public partial class MainWindow : Window
         foreach (var cat in _repository.Categories())
         {
             var button = new Button {
-                Content = "● " + cat.Name, Tag = "category:" + cat.Name,
+                Content = (cat.Pinboard ? "⌖ " : "● ") + cat.Name, Tag = "category:" + cat.Name,
                 Style = (Style)FindResource("CategoryTab"), AllowDrop = true
             };
             button.Click += Category_Click;
@@ -530,6 +539,12 @@ public partial class MainWindow : Window
                 e.Effects = e.Data.GetDataPresent("Clipori.EntryIds") ? DragDropEffects.Move : DragDropEffects.None;
                 e.Handled = true;
             };
+            try
+            {
+                var rgb = (Color)System.Windows.Media.ColorConverter.ConvertFromString(cat.Color);
+                button.Foreground = new SolidColorBrush(rgb);
+            }
+            catch { }
             _dynamicCategoryButtons.Add(button);
             CustomCategories.Children.Add(button);
         }
@@ -567,6 +582,7 @@ public partial class MainWindow : Window
                     { entry.CategoryName = ""; entry.NotifyChanged(); }
                 }
             }
+            Diagnostics.Verbose = _settings.DiagnosticsEnabled;
             RefreshCustomCategories();
             RefreshCards();
             _repository.Prune(_settings.RetentionDays);
