@@ -24,17 +24,27 @@ using Color = System.Windows.Media.Color;
 using Brushes = System.Windows.Media.Brushes;
 using MenuItem = System.Windows.Controls.MenuItem;
 using System.IO;
+using System.Collections.Specialized;
+using System.Text.Json;
+using System.Diagnostics;
 
 namespace Clipori.Windows;
 
 public partial class MainWindow : Window
 {
     private readonly ClipRepository _repository;
+    private readonly UserSettings _settings;
+    private IntPtr _previousFocus;
+    private bool _dialogOpen;
+    private bool _contextOpen;
+    private bool _pastePending;
+    private Point _dragStart;
+    private bool _dragged;
+    private readonly HashSet<string> _selection = new(StringComparer.Ordinal);
+    private readonly List<Button> _dynamicCategoryButtons = new();
     private readonly ObservableCollection<ClipEntry> _visible = new();
     private readonly List<ClipEntry> _all = new();
     private readonly Forms.NotifyIcon _tray;
-    private static readonly HashSet<string> PrivateProcesses = new(StringComparer.OrdinalIgnoreCase)
-    { "KeePass", "KeePassXC", "Bitwarden", "1Password", "LastPass", "CredentialUIBroker" };
 
     private HwndSource? _source;
     private IntPtr _ownHandle;
@@ -51,26 +61,35 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _settings = UserSettings.Load();
+        _paused = _settings.CapturePaused;
         _repository = new ClipRepository();
+        _repository.Prune(_settings.RetentionDays);
         _all.AddRange(_repository.Load());
         CardsList.ItemsSource = _visible;
+        RefreshCustomCategories();
         RefreshCards();
         PositionShelf();
 
         _tray = new Forms.NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = TrayIconFactory.Make(),
             Text = "Clipori for Windows · Ctrl+Alt+V",
             Visible = true,
             ContextMenuStrip = new Forms.ContextMenuStrip()
         };
         _tray.ContextMenuStrip.Items.Add("显示 / 隐藏", null, (_, _) => Dispatcher.Invoke(ToggleShelf));
         _tray.ContextMenuStrip.Items.Add("暂停 / 继续记录", null, (_, _) => Dispatcher.Invoke(ToggleCapture));
+        _tray.ContextMenuStrip.Items.Add("设置", null, (_, _) => Dispatcher.Invoke(() => OpenSettings()));
+        _tray.ContextMenuStrip.Items.Add("打开诊断日志", null, (_, _) => Dispatcher.Invoke(OpenLogs));
         _tray.ContextMenuStrip.Items.Add("退出 Clipori", null, (_, _) => Dispatcher.Invoke(ExitApp));
         _tray.DoubleClick += (_, _) => Dispatcher.Invoke(ToggleShelf);
 
         SourceInitialized += OnSourceInitialized;
         Closing += OnClosing;
+        PauseButton.Content = _paused ? "继续记录" : "暂停记录";
+        StatusDot.Fill = _paused ? Brushes.Orange : new SolidColorBrush(Color.FromRgb(107, 202, 160));
+        Diagnostics.Info("main.ready", "history=" + _all.Count);
     }
 
     private void PositionShelf()
@@ -91,8 +110,10 @@ public partial class MainWindow : Window
         {
             MessageBox.Show("剪贴板监听注册失败。请重启应用。", "Clipori", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+        Diagnostics.Info("win32.listener", "clipboard_listener_registered");
         _registeredHotkey = NativeMethods.RegisterHotKey(_ownHandle, (int)NativeMethods.HOTKEY_ID,
             NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, NativeMethods.VK_V);
+        Diagnostics.Info("win32.hotkey", "registered=" + _registeredHotkey);
         if (!_registeredHotkey)
         {
             StatusLabel.Text = "全局快捷键被占用，可通过托盘图标打开";
@@ -129,7 +150,8 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            StatusLabel.Text = "记录失败：" + ex.Message;
+            Diagnostics.Error("clipboard.capture", ex);
+            StatusLabel.Text = "记录失败 · 查看诊断日志";
         }
         finally { _busyCapturing = false; }
     }
@@ -146,11 +168,23 @@ public partial class MainWindow : Window
     {
         // Privacy protection is best-effort. Clipboard managers cannot reliably detect every secret.
         var source = NativeMethods.ForegroundProcessName();
-        if (PrivateProcesses.Contains(source)) return;
+        if (_settings.IsExcluded(source)) return;
+        // Respect Windows clipboard manager exclusion metadata where present.
+        if (Clipboard.ContainsData("ExcludeClipboardContentFromMonitorProcessing")) return;
 
         ClipEntry? newItem = null;
         byte[]? imageBytes = null;
-        if (Clipboard.ContainsImage())
+        if (Clipboard.ContainsFileDropList())
+        {
+            var dropped = Clipboard.GetFileDropList().Cast<string>().Where(p => File.Exists(p) || Directory.Exists(p)).ToArray();
+            if (dropped.Length == 0) return;
+            string serialized = JsonSerializer.Serialize(dropped);
+            newItem = new ClipEntry {
+                Kind = "files", Text = serialized, Title = dropped.Length == 1 ? Path.GetFileName(dropped[0]) : $"{dropped.Length} 个文件 / 文件夹",
+                Source = source, Hash = HashBytes(Encoding.UTF8.GetBytes(serialized))
+            };
+        }
+        else if (Clipboard.ContainsImage())
         {
             var bitmap = Clipboard.GetImage();
             if (bitmap != null && bitmap.PixelWidth > 0 && bitmap.PixelHeight > 0 &&
@@ -173,7 +207,7 @@ public partial class MainWindow : Window
             var content = Clipboard.GetText(TextDataFormat.UnicodeText);
             if (string.IsNullOrWhiteSpace(content) || content.Length > 1_000_000) return;
             var normalized = content.Trim();
-            string kind = GuessKind(normalized);
+            string kind = ClipboardClassifier.Classify(normalized);
             var firstLine = normalized.Split('\n', 2)[0].Trim();
             string title = firstLine.Length > 48 ? firstLine[..48] + "…" : firstLine;
             newItem = new ClipEntry {
@@ -189,8 +223,8 @@ public partial class MainWindow : Window
 
         if (imageBytes != null)
         {
-            string file = Path.Combine(_repository.ImagesPath, newItem.Id + ".png");
-            File.WriteAllBytes(file, imageBytes);
+            string file = Path.Combine(_repository.ImagesPath, newItem.Id + ".dat");
+            File.WriteAllBytes(file, Protection.ProtectBytes(imageBytes));
             newItem.ImagePath = file;
         }
         try { _repository.Add(newItem); }
@@ -198,15 +232,25 @@ public partial class MainWindow : Window
         _all.Insert(0, newItem);
         if (_all.Count > 1000) _all.RemoveAt(_all.Count - 1);
         RefreshCards();
+        Diagnostics.Info("clipboard.saved", "kind=" + newItem.Kind);
+        if (_settings.AutoClassify) _ = AutoClassifyAsync(newItem);
     }
 
-    private static string GuessKind(string value)
+    private async Task AutoClassifyAsync(ClipEntry item)
     {
-        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == "https" || uri.Scheme == "http")) return "link";
-        if ((value.Contains("{", StringComparison.Ordinal) && value.Contains("}", StringComparison.Ordinal)) ||
-            value.Contains("=>", StringComparison.Ordinal) || value.StartsWith("using ", StringComparison.Ordinal) ||
-            value.StartsWith("def ", StringComparison.Ordinal)) return "code";
-        return "text";
+        try
+        {
+            var categories = _repository.Categories().Select(c => c.Name).ToArray();
+            string chosen = await AiService.SuggestCategoryAsync(_settings, item, categories);
+            if (!string.IsNullOrEmpty(chosen) && _all.Contains(item))
+            {
+                item.CategoryName = chosen;
+                _repository.Save(item);
+                RefreshCards();
+                Diagnostics.Info("ai.classified", "category_selected");
+            }
+        }
+        catch (Exception ex) { Diagnostics.Error("ai.classification", ex); }
     }
 
     private static string HashBytes(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
@@ -216,6 +260,7 @@ public partial class MainWindow : Window
         string query = SearchBox?.Text.Trim() ?? "";
         IEnumerable<ClipEntry> filtered = _all;
         if (_category == "pinned") filtered = filtered.Where(c => c.IsPinned);
+        else if (_category.StartsWith("category:", StringComparison.Ordinal)) filtered = filtered.Where(c => c.CategoryName == _category["category:".Length..]);
         else if (_category != "all") filtered = filtered.Where(c => c.Kind == _category);
         if (!string.IsNullOrWhiteSpace(query))
             filtered = filtered.Where(c => (c.Title + "\n" + c.Text + "\n" + c.Source)
@@ -224,7 +269,7 @@ public partial class MainWindow : Window
         foreach (var entry in filtered) _visible.Add(entry);
         CountLabel.Text = $"{_visible.Count} 条记忆";
         EmptyHint.Visibility = _visible.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var b in new[] { AllTab, TextTab, LinkTab, CodeTab, ImageTab, PinnedTab })
+        foreach (var b in new[] { AllTab, TextTab, LinkTab, CodeTab, ImageTab, FileTab, PinnedTab }.Concat(_dynamicCategoryButtons))
         {
             bool active = string.Equals(b.Tag?.ToString(), _category, StringComparison.Ordinal);
             b.Background = active ? new SolidColorBrush(Color.FromRgb(235, 225, 249)) : Brushes.Transparent;
@@ -236,7 +281,12 @@ public partial class MainWindow : Window
     {
         if (IsVisible) { Hide(); return; }
         var foreground = NativeMethods.GetForegroundWindow();
-        if (foreground != IntPtr.Zero && foreground != _ownHandle) _previousTarget = foreground;
+        if (foreground != IntPtr.Zero && foreground != _ownHandle)
+        {
+            _previousTarget = foreground;
+            _previousFocus = NativeMethods.CaptureFocusedControl(foreground);
+            Diagnostics.Info("shelf.target", "focused_child=" + (_previousFocus != IntPtr.Zero));
+        }
         PositionShelf();
         Show();
         Activate();
@@ -245,21 +295,45 @@ public partial class MainWindow : Window
 
     private void Window_Deactivated(object sender, EventArgs e)
     {
-        // Keep the shelf open to support context menus, previews and notes.
-        // Escape and the tray are always available to dismiss it.
+        if (!_settings.HideOnDeactivate) return;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(130) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (IsVisible && !IsActive && !_dialogOpen && !_contextOpen && !_pastePending)
+            {
+                Hide();
+                Diagnostics.Info("shelf.auto-hide");
+            }
+        };
+        timer.Start();
     }
+    private void ContextMenu_Opened(object sender, RoutedEventArgs e) => _contextOpen = true;
+    private void ContextMenu_Closed(object sender, RoutedEventArgs e) => _contextOpen = false;
 
     private void SetClipboardFromEntry(ClipEntry item)
     {
         // Capture suppression targets only our own content, not all clipboard changes.
         _writtenHash = item.Hash;
         _writtenAtUtc = DateTime.UtcNow;
-        if (item.Kind == "image" && item.ImagePath != null && File.Exists(item.ImagePath))
+        if (item.Kind == "files")
         {
+            var paths = JsonSerializer.Deserialize<string[]>(item.Text) ?? Array.Empty<string>();
+            var existing = paths.Where(p => File.Exists(p) || Directory.Exists(p)).ToList();
+            if (existing.Count == 0) throw new FileNotFoundException("原始文件已移动或删除，无法粘贴。");
+            var list = new StringCollection();
+            list.AddRange(existing.ToArray());
+            Clipboard.SetFileDropList(list);
+        }
+        else if (item.Kind == "image" && item.ImagePath != null && File.Exists(item.ImagePath))
+        {
+            byte[] raw = File.ReadAllBytes(item.ImagePath);
+            if (item.ImagePath.EndsWith(".dat", StringComparison.OrdinalIgnoreCase)) raw = Protection.UnprotectBytes(raw);
+            using var ms = new MemoryStream(raw);
             var source = new BitmapImage();
             source.BeginInit();
             source.CacheOption = BitmapCacheOption.OnLoad;
-            source.UriSource = new Uri(item.ImagePath, UriKind.Absolute);
+            source.StreamSource = ms;
             source.EndInit();
             source.Freeze();
             Clipboard.SetImage(source);
@@ -273,6 +347,7 @@ public partial class MainWindow : Window
         {
             SetClipboardFromEntry(item);
             StatusLabel.Text = "已复制 · " + item.TypeLabel;
+            Diagnostics.Info("clipboard.copy", "kind=" + item.Kind);
         }
         catch (Exception ex) { MessageBox.Show(this, "复制失败：" + ex.Message, "Clipori"); }
     }
@@ -280,36 +355,68 @@ public partial class MainWindow : Window
     private void PasteEntry(ClipEntry item)
     {
         try { SetClipboardFromEntry(item); }
-        catch (Exception ex) { MessageBox.Show(this, "复制失败：" + ex.Message, "Clipori"); return; }
+        catch (Exception ex)
+        {
+            Diagnostics.Error("paste.copy", ex);
+            MessageBox.Show(this, "无法复制该内容：" + ex.Message, "Clipori"); return;
+        }
+        _pastePending = true;
         Hide();
-        var target = _previousTarget;
-        if (target == IntPtr.Zero || !NativeMethods.IsWindow(target))
-        {
-            _tray.ShowBalloonTip(2500, "Clipori", "内容已复制，未找到之前的窗口；请手动 Ctrl+V 粘贴。", Forms.ToolTipIcon.Info);
-            return;
-        }
-        if (NativeMethods.IsIconic(target)) NativeMethods.ShowWindow(target, 9);
-        bool focused = NativeMethods.SetForegroundWindow(target);
-        if (!focused)
-        {
-            _tray.ShowBalloonTip(2500, "Clipori", "内容已复制，请切回目标应用并按 Ctrl+V。", Forms.ToolTipIcon.Info);
-            return;
-        }
-        // The target app may need a moment to regain input focus before Ctrl+V.
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+        IntPtr target = _previousTarget;
+        IntPtr focus = _previousFocus;
+        Diagnostics.Info("paste.begin", "kind=" + item.Kind + ";target_valid=" + NativeMethods.IsWindow(target));
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(170) };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
-            if (NativeMethods.GetForegroundWindow() != target || !NativeMethods.SendControlV())
-                _tray.ShowBalloonTip(2500, "Clipori", "内容已复制，自动粘贴未完成；请按 Ctrl+V。", Forms.ToolTipIcon.Info);
+            try
+            {
+                if (!NativeMethods.RestoreForegroundAndFocus(target, focus) || !NativeMethods.SendControlV())
+                {
+                    Diagnostics.Warn("paste.fallback", "foreground_or_input_blocked");
+                    _tray.ShowBalloonTip(3500, "Clipori", "已复制，但目标窗口未接受自动粘贴；请手动按 Ctrl+V。", Forms.ToolTipIcon.Info);
+                }
+                else
+                {
+                    Diagnostics.Info("paste.sent", "kind=" + item.Kind);
+                    StatusLabel.Text = "已发送粘贴 · " + item.TypeLabel;
+                }
+            }
+            catch (Exception ex) { Diagnostics.Error("paste.error", ex); }
+            finally { _pastePending = false; }
         };
         timer.Start();
+    }
+
+    private void Card_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) =>
+        _dragStart = e.GetPosition(this);
+    private void Card_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || sender is not Border { DataContext: ClipEntry item }) return;
+        var pos = e.GetPosition(this);
+        if (Math.Abs(pos.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(pos.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        _dragged = true;
+        if (!_selection.Contains(item.Id))
+        {
+            foreach (var selected in _all) selected.IsSelected = false;
+            _selection.Clear(); _selection.Add(item.Id); item.IsSelected = true;
+        }
+        var data = new DataObject("Clipori.EntryIds", string.Join(",", _selection));
+        DragDrop.DoDragDrop((DependencyObject)sender, data, DragDropEffects.Move);
     }
 
     private void Card_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (sender is not Border { DataContext: ClipEntry item }) return;
-        if (e.ClickCount >= 2) PasteEntry(item);
+        if (_dragged) { _dragged = false; e.Handled = true; return; }
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            if (_selection.Remove(item.Id)) item.IsSelected = false;
+            else { _selection.Add(item.Id); item.IsSelected = true; }
+            CopyEntry(item);
+        }
+        else if (e.ClickCount >= 2 || _settings.SingleClickPaste) PasteEntry(item);
         else CopyEntry(item);
         e.Handled = true;
     }
@@ -317,6 +424,41 @@ public partial class MainWindow : Window
     private void CopyMenu_Click(object sender, RoutedEventArgs e) { if (MenuEntry(sender) is { } entry) CopyEntry(entry); }
     private void PasteMenu_Click(object sender, RoutedEventArgs e) { if (MenuEntry(sender) is { } entry) PasteEntry(entry); }
     private void PreviewMenu_Click(object sender, RoutedEventArgs e) { if (MenuEntry(sender) is { } entry) Preview(entry); }
+    private void EditMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuEntry(sender) is not { } entry) return;
+        _dialogOpen = true;
+        try
+        {
+            var editor = new TextEditorWindow(entry) { Owner = this };
+            if (editor.ShowDialog() != true) return;
+            entry.Title = editor.NoteTitle;
+            if (entry.Kind != "image" && entry.Kind != "files") entry.Text = editor.NoteBody;
+            entry.Notes = editor.NoteNotes;
+            entry.Hash = HashBytes(Encoding.UTF8.GetBytes(entry.Text));
+            _repository.Save(entry); entry.NotifyChanged(); RefreshCards();
+            Diagnostics.Info("entry.edited", "kind=" + entry.Kind);
+        }
+        finally { _dialogOpen = false; }
+    }
+    private void CategoryMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem parent || parent.DataContext is not ClipEntry entry) return;
+        parent.Items.Clear();
+        foreach (var name in new[] { "" }.Concat(_repository.Categories().Select(c => c.Name)))
+        {
+            var local = name;
+            var item = new MenuItem { Header = local.Length == 0 ? "未分类" : local };
+            item.Click += (_, _) => AssignSelected(entry, local);
+            parent.Items.Add(item);
+        }
+    }
+    private void AssignSelected(ClipEntry source, string category)
+    {
+        var selected = _selection.Contains(source.Id) ? _all.Where(c => _selection.Contains(c.Id)).ToList() : new List<ClipEntry> { source };
+        foreach (var item in selected) { item.CategoryName = category; _repository.Save(item); item.IsSelected = false; }
+        _selection.Clear(); RefreshCards(); Diagnostics.Info("category.assign", "count=" + selected.Count);
+    }
     private void PinMenu_Click(object sender, RoutedEventArgs e)
     {
         if (MenuEntry(sender) is not { } entry) return;
@@ -333,16 +475,23 @@ public partial class MainWindow : Window
     }
     private void Preview(ClipEntry item)
     {
-        var dialog = new PreviewWindow(item) { Owner = this };
-        dialog.ShowDialog();
+        _dialogOpen = true;
+        try
+        {
+            var dialog = new PreviewWindow(item) { Owner = this };
+            dialog.ShowDialog();
+        }
+        finally { _dialogOpen = false; }
     }
     private void NewNote_Click(object sender, RoutedEventArgs e)
     {
-        var editor = new TextEditorWindow { Owner = this };
-        if (editor.ShowDialog() != true) return;
+        _dialogOpen = true;
+        TextEditorWindow editor = new() { Owner = this };
+        try { if (editor.ShowDialog() != true) return; }
+        finally { _dialogOpen = false; }
         var note = new ClipEntry
         {
-            Kind = "text", Title = editor.NoteTitle, Text = editor.NoteBody,
+            Kind = "text", Title = editor.NoteTitle, Text = editor.NoteBody, Notes = editor.NoteNotes,
             Source = "Clipori 便笺", Hash = HashBytes(Encoding.UTF8.GetBytes(editor.NoteBody))
         };
         _repository.Add(note);
@@ -350,11 +499,98 @@ public partial class MainWindow : Window
         _category = "all";
         SearchBox.Clear();
         RefreshCards();
+        Diagnostics.Info("note.created");
     }
     private void Category_Click(object sender, RoutedEventArgs e)
     {
         _category = (sender as Button)?.Tag?.ToString() ?? "all";
         RefreshCards();
+    }
+    private void RefreshCustomCategories()
+    {
+        CustomCategories.Children.Clear();
+        _dynamicCategoryButtons.Clear();
+        foreach (var cat in _repository.Categories())
+        {
+            var button = new Button {
+                Content = "● " + cat.Name, Tag = "category:" + cat.Name,
+                Style = (Style)FindResource("CategoryTab"), AllowDrop = true
+            };
+            button.Click += Category_Click;
+            button.Drop += Category_Drop;
+            button.DragOver += (s, e) =>
+            {
+                e.Effects = e.Data.GetDataPresent("Clipori.EntryIds") ? DragDropEffects.Move : DragDropEffects.None;
+                e.Handled = true;
+            };
+            _dynamicCategoryButtons.Add(button);
+            CustomCategories.Children.Add(button);
+        }
+    }
+    private void Category_Drop(object sender, DragEventArgs e)
+    {
+        if (sender is not Button btn || !e.Data.GetDataPresent("Clipori.EntryIds")) return;
+        string name = (btn.Tag?.ToString() ?? "")["category:".Length..];
+        string raw = e.Data.GetData("Clipori.EntryIds") as string ?? "";
+        var ids = new HashSet<string>(raw.Split(',', StringSplitOptions.RemoveEmptyEntries));
+        foreach (var item in _all.Where(c => ids.Contains(c.Id)))
+        {
+            item.CategoryName = name;
+            item.IsSelected = false;
+            _repository.Save(item);
+        }
+        _selection.Clear(); _dragged = false;
+        RefreshCards(); e.Handled = true;
+        Diagnostics.Info("category.drop", "count=" + ids.Count);
+    }
+    private void Settings_Click(object sender, RoutedEventArgs e) => OpenSettings();
+    private void OpenSettings()
+    {
+        _dialogOpen = true;
+        try
+        {
+            var dialog = new SettingsWindow(_settings, _repository) { Owner = this };
+            dialog.ShowDialog();
+            if (dialog.CategoriesChanged)
+            {
+                var names = _repository.Categories().Select(c => c.Name).ToHashSet();
+                foreach (var entry in _all)
+                {
+                    if (entry.CategoryName != "" && !names.Contains(entry.CategoryName))
+                    { entry.CategoryName = ""; entry.NotifyChanged(); }
+                }
+            }
+            RefreshCustomCategories();
+            RefreshCards();
+            _repository.Prune(_settings.RetentionDays);
+        }
+        finally { _dialogOpen = false; }
+    }
+    private void OpenLogs()
+    {
+        Directory.CreateDirectory(Diagnostics.DirectoryPath);
+        Process.Start(new ProcessStartInfo { FileName = Diagnostics.DirectoryPath, UseShellExecute = true });
+    }
+    private async void AiSearch_Click(object sender, RoutedEventArgs e)
+    {
+        string prompt = SearchBox.Text.Trim();
+        if (prompt.Length == 0) { SearchBox.Focus(); return; }
+        _dialogOpen = true;
+        try
+        {
+            StatusLabel.Text = "AI 正在检索…";
+            // Manual opt-in: no clipboard content is sent unless the user clicks AI search.
+            string answer = await AiService.AskAsync(_settings, prompt, _all);
+            var response = new ClipEntry { Title = "AI 找回 · " + prompt, Text = answer, Kind = "text" };
+            new PreviewWindow(response) { Owner = this }.ShowDialog();
+            Diagnostics.Info("ai.search", "completed");
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Error("ai.search", ex);
+            MessageBox.Show(this, ex.Message, "AI 找回");
+        }
+        finally { _dialogOpen = false; StatusLabel.Text = "正在悄悄记住"; }
     }
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
@@ -364,6 +600,9 @@ public partial class MainWindow : Window
     private void ToggleCapture()
     {
         _paused = !_paused;
+        _settings.CapturePaused = _paused;
+        _settings.Save();
+        Diagnostics.Info("capture.toggle", "paused=" + _paused);
         PauseButton.Content = _paused ? "继续记录" : "暂停记录";
         StatusDot.Fill = _paused ? Brushes.Orange : new SolidColorBrush(Color.FromRgb(107, 202, 160));
         StatusLabel.Text = _paused ? "剪贴板记录已暂停" : "正在悄悄记住";
@@ -417,7 +656,10 @@ public partial class MainWindow : Window
         }
         _source?.RemoveHook(WndProc);
         _tray.Visible = false;
+        var trayIcon = _tray.Icon;
         _tray.Dispose();
+        trayIcon?.Dispose();
+        Diagnostics.Info("app.tray-exit");
         System.Windows.Application.Current.Shutdown();
     }
 }

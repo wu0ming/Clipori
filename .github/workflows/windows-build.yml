@@ -10,21 +10,41 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - name: Restore
-        run: dotnet restore windows/Clipori.Windows/Clipori.Windows.csproj
+        run: |
+          dotnet restore windows/Clipori.Windows/Clipori.Windows.csproj
+          dotnet restore windows/Clipori.Windows.Tests/Clipori.Windows.Tests.csproj
       - name: Compile
         run: dotnet build windows/Clipori.Windows/Clipori.Windows.csproj --configuration Release --no-restore
+      - name: Regression tests
+        run: dotnet run --project windows/Clipori.Windows.Tests/Clipori.Windows.Tests.csproj --configuration Release --no-restore
       - name: Publish self-contained x64
         run: dotnet publish windows/Clipori.Windows/Clipori.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -o publish/Clipori-Windows-win-x64
-      - name: Upload EXE package
+      - name: Build debug edition
+        run: dotnet publish windows/Clipori.Windows/Clipori.Windows.csproj -c Debug -r win-x64 --self-contained true -o publish/Clipori-Windows-Debug-win-x64
+      - name: Upload Release artifact
         uses: actions/upload-artifact@v4
         with:
           name: Clipori-Windows-win-x64
           path: publish/Clipori-Windows-win-x64/
+          retention-days: 30
+      - name: Upload Debug artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clipori-Windows-Debug-win-x64
+          path: publish/Clipori-Windows-Debug-win-x64/
           retention-days: 14
+      - name: Create or update pre-release
+        if: ${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'release(windows):') }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Compress-Archive -Path 'publish/Clipori-Windows-win-x64/*' -DestinationPath 'Clipori-Windows-v0.2.0-preview.1-win-x64.zip'
+          gh release create v0.2.0-preview.1 'Clipori-Windows-v0.2.0-preview.1-win-x64.zip' --target "${{ github.sha }}" --title 'Clipori for Windows v0.2.0-preview.1' --notes-file windows/RELEASE-NOTES.md --prerelease

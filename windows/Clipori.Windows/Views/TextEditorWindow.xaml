@@ -4,11 +4,12 @@
         Title="新建 Clipori 便笺" Width="515" Height="360"
         WindowStartupLocation="CenterOwner" Background="#FBF9FD" FontFamily="Segoe UI,Microsoft YaHei UI">
   <Grid Margin="24">
-    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <TextBlock Text="写下这一刻的灵感" Foreground="#40354E" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,18"/>
     <TextBox x:Name="TitleBox" Grid.Row="1" Height="34" Margin="0,0,0,10" Padding="8" FontSize="12" ToolTip="标题（可选）"/>
     <TextBox x:Name="BodyBox" Grid.Row="2" Padding="10" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontSize="13"/>
-    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+    <TextBox x:Name="NotesBox" Grid.Row="3" Height="46" AcceptsReturn="True" TextWrapping="Wrap" Padding="7" Margin="0,9,0,0" ToolTip="附加备注（可选）"/>
+    <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
       <Button Content="取消" Click="Cancel_Click" Padding="18,8" Margin="0,0,8,0"/>
       <Button Content="保存便笺" Click="Save_Click" Padding="18,8" Background="#9F83DA" Foreground="White" BorderThickness="0"/>
     </StackPanel>

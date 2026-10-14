@@ -55,7 +55,9 @@
           </Border>
           <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
             <Button x:Name="PauseButton" Content="暂停记录" Margin="0,0,7,0" Style="{StaticResource ActionButton}" Click="PauseButton_Click" ToolTip="暂停/恢复剪贴板记录 (Ctrl+T)"/>
+            <Button Content="✨ AI 找回" Margin="0,0,7,0" Style="{StaticResource ActionButton}" Click="AiSearch_Click"/>
             <Button Content="＋ 便笺" Margin="0,0,7,0" Style="{StaticResource ActionButton}" Click="NewNote_Click"/>
+            <Button Content="⚙" Margin="0,0,7,0" Style="{StaticResource ActionButton}" Click="Settings_Click" ToolTip="设置、AI、诊断、分类"/>
             <Button Content="×" FontSize="18" Padding="10,6" Style="{StaticResource ActionButton}" Click="CloseButton_Click" ToolTip="收起到托盘 (Esc)"/>
           </StackPanel>
         </Grid>
@@ -68,7 +70,9 @@
             <Button x:Name="LinkTab" Content="● 链接" Tag="link" Click="Category_Click" Style="{StaticResource CategoryTab}"/>
             <Button x:Name="CodeTab" Content="● 代码" Tag="code" Click="Category_Click" Style="{StaticResource CategoryTab}"/>
             <Button x:Name="ImageTab" Content="● 图片" Tag="image" Click="Category_Click" Style="{StaticResource CategoryTab}"/>
+            <Button x:Name="FileTab" Content="● 文件" Tag="files" Click="Category_Click" Style="{StaticResource CategoryTab}"/>
             <Button x:Name="PinnedTab" Content="⌖ 固定" Tag="pinned" Click="Category_Click" Style="{StaticResource CategoryTab}"/>
+            <StackPanel x:Name="CustomCategories" Orientation="Horizontal"/>
           </StackPanel>
           <TextBlock x:Name="CountLabel" Text="0 条记忆" FontSize="11" Foreground="#958CA2" HorizontalAlignment="Right" VerticalAlignment="Center"/>
         </Grid>
@@ -85,6 +89,7 @@
                   <Border x:Name="CardBody" Width="194" Height="212" Background="#FEFDFF"
                           BorderBrush="#E4DCEB" BorderThickness="1" CornerRadius="16"
                           Padding="13,11" Margin="7,13,6,4" Cursor="Hand"
+                          MouseLeftButtonDown="Card_MouseLeftButtonDown" MouseMove="Card_MouseMove"
                           MouseLeftButtonUp="Card_MouseLeftButtonUp"
                           ToolTip="单击复制 · 双击粘贴 · 右键更多操作">
                     <Border.RenderTransform><TranslateTransform x:Name="Lift" Y="0"/></Border.RenderTransform>
@@ -97,10 +102,13 @@
                       </EventTrigger>
                     </Border.Triggers>
                     <Border.ContextMenu>
-                      <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                      <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                   Opened="ContextMenu_Opened" Closed="ContextMenu_Closed">
                         <MenuItem Header="复制" Click="CopyMenu_Click"/>
                         <MenuItem Header="粘贴到之前的应用" Click="PasteMenu_Click"/>
                         <MenuItem Header="预览" Click="PreviewMenu_Click"/>
+                        <MenuItem Header="编辑 / 备注" Click="EditMenu_Click"/>
+                        <MenuItem Header="移动到分类" SubmenuOpened="CategoryMenu_Opened"/>
                         <Separator/>
                         <MenuItem Header="固定 / 取消固定" Click="PinMenu_Click"/>
                         <MenuItem Header="删除记录" Click="DeleteMenu_Click"/>
@@ -133,6 +141,10 @@
                       <Setter TargetName="ImageFrame" Property="Visibility" Value="Visible"/>
                       <Setter TargetName="ContentPreview" Property="Visibility" Value="Collapsed"/>
                     </DataTrigger>
+                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                      <Setter TargetName="CardBody" Property="BorderBrush" Value="#8360C5"/>
+                      <Setter TargetName="CardBody" Property="BorderThickness" Value="2"/>
+                    </DataTrigger>
                     <DataTrigger Binding="{Binding IsPinned}" Value="True">
                       <Setter TargetName="CardBody" Property="BorderBrush" Value="#BEA0E7"/>
                     </DataTrigger>
@@ -155,7 +167,7 @@
             <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="#6BCAA0" Margin="0,0,8,0"/>
             <TextBlock x:Name="StatusLabel" Text="正在悄悄记住" FontSize="11" Foreground="#90849C" VerticalAlignment="Center"/>
           </StackPanel>
-          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#9C94A9" FontSize="10" Text="Ctrl+Alt+V 唤醒  ·  单击复制  ·  双击粘贴  ·  Esc 收起"/>
+          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#9C94A9" FontSize="10" Text="Ctrl+Alt+V 唤醒  ·  单击粘贴 / Ctrl+单击复制  ·  双击粘贴  ·  Esc 收起"/>
         </Grid>
       </Grid>
     </Border>

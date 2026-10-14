@@ -22,68 +22,155 @@ public sealed class ClipRepository
                 hash TEXT NOT NULL, image_path TEXT, pinned INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS ix_clips_created ON clips(created_utc DESC);
+            CREATE TABLE IF NOT EXISTS categories (name TEXT PRIMARY KEY, color TEXT NOT NULL DEFAULT '#AE90DB');
             """;
         cmd.ExecuteNonQuery();
-        Prune();
+        EnsureColumn(db, "category", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumn(db, "notes", "TEXT NOT NULL DEFAULT ''");
     }
 
+    private static void EnsureColumn(SqliteConnection db, string name, string definition)
+    {
+        using var check = db.CreateCommand();
+        check.CommandText = "PRAGMA table_info(clips)";
+        using var reader = check.ExecuteReader();
+        bool found = false;
+        while (reader.Read()) if (reader.GetString(1) == name) found = true;
+        reader.Close();
+        if (!found)
+        {
+            using var alter = db.CreateCommand();
+            alter.CommandText = $"ALTER TABLE clips ADD COLUMN {name} {definition}";
+            alter.ExecuteNonQuery();
+        }
+    }
     private SqliteConnection Open() { var db = new SqliteConnection(ConnectionString); db.Open(); return db; }
+
+    public List<(string Name, string Color)> Categories()
+    {
+        var result = new List<(string, string)>();
+        using var db = Open(); using var c = db.CreateCommand();
+        c.CommandText = "SELECT name,color FROM categories ORDER BY rowid ASC";
+        using var r = c.ExecuteReader();
+        while (r.Read()) result.Add((r.GetString(0), r.GetString(1)));
+        return result;
+    }
+    public void AddCategory(string name, string color = "#AE90DB")
+    {
+        using var db = Open(); using var c = db.CreateCommand();
+        c.CommandText = "INSERT OR IGNORE INTO categories(name,color) VALUES($name,$color)";
+        c.Parameters.AddWithValue("$name", name); c.Parameters.AddWithValue("$color", color);
+        c.ExecuteNonQuery();
+    }
+    public void DeleteCategory(string name)
+    {
+        using var db = Open(); using var transaction = db.BeginTransaction();
+        using var c = db.CreateCommand(); c.Transaction = transaction;
+        c.CommandText = "UPDATE clips SET category='' WHERE category=$name; DELETE FROM categories WHERE name=$name";
+        c.Parameters.AddWithValue("$name", name); c.ExecuteNonQuery(); transaction.Commit();
+    }
 
     public List<ClipEntry> Load(int limit = 1000)
     {
-        var output = new List<ClipEntry>();
-        using var db = Open();
-        using var cmd = db.CreateCommand();
-        cmd.CommandText = "SELECT id,kind,body,title,source,created_utc,hash,image_path,pinned FROM clips ORDER BY created_utc DESC LIMIT $limit";
-        cmd.Parameters.AddWithValue("$limit", limit);
-        using var r = cmd.ExecuteReader();
-        while (r.Read())
-            output.Add(new ClipEntry {
-                Id = r.GetString(0), Kind = r.GetString(1), Text = r.GetString(2),
-                Title = r.GetString(3), Source = r.GetString(4),
-                CreatedUtc = DateTime.Parse(r.GetString(5), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                Hash = r.GetString(6), ImagePath = r.IsDBNull(7) ? null : r.GetString(7), IsPinned = r.GetInt32(8) != 0
-            });
-        return output;
+        var result = new List<ClipEntry>();
+        var legacy = new HashSet<string>();
+        using (var db = Open())
+        {
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = "SELECT id,kind,body,title,source,created_utc,hash,image_path,pinned,category,notes FROM clips ORDER BY created_utc DESC LIMIT $limit";
+            cmd.Parameters.AddWithValue("$limit", limit);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                try
+                {
+                    string id = r.GetString(0), body = r.GetString(2), title = r.GetString(3), notes = r.GetString(10);
+                    if (!Protection.IsProtected(body) || !Protection.IsProtected(title) || !Protection.IsProtected(notes))
+                        legacy.Add(id);
+                    result.Add(new ClipEntry {
+                        Id = id, Kind = r.GetString(1),
+                        Text = Protection.Unprotect(body),
+                        Title = Protection.Unprotect(title), Source = r.GetString(4),
+                        CreatedUtc = DateTime.Parse(r.GetString(5), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                        Hash = r.GetString(6), ImagePath = r.IsDBNull(7) ? null : r.GetString(7),
+                        IsPinned = r.GetInt32(8) != 0, CategoryName = r.GetString(9),
+                        Notes = Protection.Unprotect(notes)
+                    });
+                }
+                catch (Exception ex) { Diagnostics.Error("repository.record-decrypt", ex); }
+            }
+        }
+        // Migrate old plaintext rows and PNG images to user-scoped DPAPI encryption.
+        bool converted = false;
+        foreach (var entry in result)
+        {
+            try
+            {
+                bool oldImage = entry.Kind == "image" && entry.ImagePath != null &&
+                    File.Exists(entry.ImagePath) && !entry.ImagePath.EndsWith(".dat", StringComparison.OrdinalIgnoreCase);
+                if (!oldImage && !legacy.Contains(entry.Id)) continue;
+                if (entry.Kind == "image" && entry.ImagePath != null &&
+                    File.Exists(entry.ImagePath) && !entry.ImagePath.EndsWith(".dat", StringComparison.OrdinalIgnoreCase))
+                {
+                    var destination = Path.Combine(ImagesPath, entry.Id + ".dat");
+                    File.WriteAllBytes(destination, Protection.ProtectBytes(File.ReadAllBytes(entry.ImagePath)));
+                    File.Delete(entry.ImagePath);
+                    entry.ImagePath = destination;
+                }
+                Save(entry);
+                converted = true;
+            }
+            catch (Exception ex) { Diagnostics.Error("repository.migrate", ex); }
+        }
+        if (converted)
+        {
+            // Compact unused SQLite pages after legacy plaintext migration.
+            try { using var db = Open(); using var command = db.CreateCommand(); command.CommandText = "VACUUM"; command.ExecuteNonQuery(); }
+            catch (Exception ex) { Diagnostics.Error("repository.vacuum", ex); }
+        }
+        return result;
     }
 
-    public void Add(ClipEntry item)
+    public void Add(ClipEntry entry)
     {
         using var db = Open(); using var cmd = db.CreateCommand();
-        cmd.CommandText = "INSERT INTO clips(id,kind,body,title,source,created_utc,hash,image_path,pinned) VALUES($id,$kind,$body,$title,$source,$date,$hash,$image,$pinned)";
-        cmd.Parameters.AddWithValue("$id", item.Id);
-        cmd.Parameters.AddWithValue("$kind", item.Kind);
-        cmd.Parameters.AddWithValue("$body", item.Text);
-        cmd.Parameters.AddWithValue("$title", item.Title);
-        cmd.Parameters.AddWithValue("$source", item.Source);
-        cmd.Parameters.AddWithValue("$date", item.CreatedUtc.ToString("O"));
-        cmd.Parameters.AddWithValue("$hash", item.Hash);
-        cmd.Parameters.AddWithValue("$image", (object?)item.ImagePath ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$pinned", item.IsPinned ? 1 : 0);
-        cmd.ExecuteNonQuery();
+        cmd.CommandText = """
+            INSERT INTO clips(id,kind,body,title,source,created_utc,hash,image_path,pinned,category,notes)
+            VALUES($id,$kind,$body,$title,$source,$date,$hash,$image,$pinned,$category,$notes)
+            """;
+        Bind(cmd, entry); cmd.ExecuteNonQuery();
     }
-
-    public void SetPinned(ClipEntry item)
+    public void Save(ClipEntry entry)
     {
         using var db = Open(); using var cmd = db.CreateCommand();
-        cmd.CommandText = "UPDATE clips SET pinned=$pinned WHERE id=$id";
-        cmd.Parameters.AddWithValue("$id", item.Id); cmd.Parameters.AddWithValue("$pinned", item.IsPinned ? 1 : 0);
-        cmd.ExecuteNonQuery();
+        cmd.CommandText = """
+            UPDATE clips SET kind=$kind,body=$body,title=$title,source=$source,hash=$hash,
+            image_path=$image,pinned=$pinned,category=$category,notes=$notes WHERE id=$id
+            """;
+        Bind(cmd, entry); cmd.ExecuteNonQuery();
     }
-
-    public void Delete(ClipEntry item)
+    private static void Bind(SqliteCommand cmd, ClipEntry e)
+    {
+        cmd.Parameters.AddWithValue("$id", e.Id); cmd.Parameters.AddWithValue("$kind", e.Kind);
+        cmd.Parameters.AddWithValue("$body", Protection.Protect(e.Text)); cmd.Parameters.AddWithValue("$title", Protection.Protect(e.Title));
+        cmd.Parameters.AddWithValue("$source", e.Source); cmd.Parameters.AddWithValue("$date", e.CreatedUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$hash", e.Hash); cmd.Parameters.AddWithValue("$image", (object?)e.ImagePath ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$pinned", e.IsPinned ? 1 : 0);
+        cmd.Parameters.AddWithValue("$category", e.CategoryName);
+        cmd.Parameters.AddWithValue("$notes", Protection.Protect(e.Notes));
+    }
+    public void SetPinned(ClipEntry e) => Save(e);
+    public void Delete(ClipEntry entry)
     {
         using var db = Open(); using var cmd = db.CreateCommand();
         cmd.CommandText = "DELETE FROM clips WHERE id=$id";
-        cmd.Parameters.AddWithValue("$id", item.Id); cmd.ExecuteNonQuery();
-        if (item.Kind == "image" && !string.IsNullOrWhiteSpace(item.ImagePath))
-        {
-            try { File.Delete(item.ImagePath); } catch { /* An external image viewer may hold the file. */ }
-        }
+        cmd.Parameters.AddWithValue("$id", entry.Id); cmd.ExecuteNonQuery();
+        if (entry.Kind == "image" && entry.ImagePath != null)
+            try { File.Delete(entry.ImagePath); } catch (Exception ex) { Diagnostics.Error("repository.image-delete", ex); }
     }
-
     public void Prune(int retentionDays = 30)
     {
+        if (retentionDays <= 0) return;
         var expiredImages = new List<string>();
         using (var db = Open())
         {

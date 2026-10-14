@@ -1,7 +1,9 @@
-using System.IO;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Windows.Media.Imaging;
+using Clipori.Windows.Services;
 
 namespace Clipori.Windows.Models;
 
@@ -15,13 +17,31 @@ public sealed class ClipEntry : INotifyPropertyChanged
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public string Hash { get; set; } = "";
     public string? ImagePath { get; set; }
+    public string CategoryName { get; set; } = "";
+    public string Notes { get; set; } = "";
+
     private bool _isPinned;
-    public bool IsPinned { get => _isPinned; set { if (_isPinned == value) return; _isPinned = value; OnPropertyChanged(); OnPropertyChanged(nameof(PinMark)); } }
+    private bool _isSelected;
+    public bool IsPinned { get => _isPinned; set { if (_isPinned == value) return; _isPinned = value; Changed(); Changed(nameof(PinMark)); } }
+    public bool IsSelected { get => _isSelected; set { if (_isSelected == value) return; _isSelected = value; Changed(); } }
     public string PinMark => IsPinned ? "📌" : "";
-    public string Preview => Kind == "image" ? "点击预览图片" : Text.Replace('\r', ' ').Replace('\n', ' ');
-    public string TypeLabel => Kind switch { "image" => "图片", "link" => "链接", "code" => "代码", _ => "文字" };
-    public string Glyph => Kind switch { "image" => "▧", "link" => "↗", "code" => "</>", _ => "≡" };
+    public string Preview => Kind switch {
+        "image" => "点击预览图片",
+        "files" => string.Join("\n", FileNames.Take(4)),
+        _ => (Text + (string.IsNullOrEmpty(Notes) ? "" : "\n" + Notes)).Replace('\r', ' ').Replace('\n', ' ')
+    };
+    public string TypeLabel => Kind switch { "image" => "图片", "files" => "文件", "link" => "链接", "code" => "代码", _ => "文字" };
+    public string Glyph => Kind switch { "image" => "▧", "files" => "▣", "link" => "↗", "code" => "</>", _ => "≡" };
     public string When => CreatedUtc.ToLocalTime().ToString("MM/dd HH:mm");
+    public string[] FileNames
+    {
+        get
+        {
+            if (Kind != "files") return Array.Empty<string>();
+            try { return (JsonSerializer.Deserialize<string[]>(Text) ?? Array.Empty<string>()).Select(Path.GetFileName).ToArray()!; }
+            catch { return Array.Empty<string>(); }
+        }
+    }
     public BitmapImage? Thumbnail
     {
         get
@@ -29,18 +49,23 @@ public sealed class ClipEntry : INotifyPropertyChanged
             if (Kind != "image" || string.IsNullOrEmpty(ImagePath) || !File.Exists(ImagePath)) return null;
             try
             {
+                byte[] bytes = File.ReadAllBytes(ImagePath);
+                if (ImagePath.EndsWith(".dat", StringComparison.OrdinalIgnoreCase))
+                    bytes = Protection.UnprotectBytes(bytes);
+                using var stream = new MemoryStream(bytes);
                 var image = new BitmapImage();
                 image.BeginInit();
-                image.UriSource = new Uri(ImagePath, UriKind.Absolute);
+                image.StreamSource = stream;
                 image.CacheOption = BitmapCacheOption.OnLoad;
                 image.DecodePixelWidth = 420;
                 image.EndInit();
                 image.Freeze();
                 return image;
             }
-            catch { return null; }
+            catch (Exception ex) { Diagnostics.Error("image.thumbnail", ex); return null; }
         }
     }
     public event PropertyChangedEventHandler? PropertyChanged;
-    private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    public void NotifyChanged() { Changed(nameof(Preview)); Changed(nameof(Title)); Changed(nameof(CategoryName)); }
+    private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
