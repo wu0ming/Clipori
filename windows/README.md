@@ -1,4 +1,4 @@
-# Clipori for Windows v0.2.0-preview.1 (unofficial)
+# Clipori for Windows v0.2.0-preview.2 (unofficial)
 
 **Build:** C# / WPF / .NET 10 · Windows 10/11 x64 · GitHub Actions
 **Status:** CI compiler, classifier/DPAPI regression tests, and both publish configurations verified. **Windows desktop end-to-end testing is still required.**
@@ -7,7 +7,7 @@ An unofficial Windows port inspired by [Panzer-Jack/Clipori](https://github.com/
 
 ## Install
 
-Download the **pre-release** from [Releases](https://github.com/wu0ming/Clipori/releases) and unzip `Clipori-Windows-v0.2.0-preview.1-win-x64.zip`. Run `Clipori.Windows.exe`.
+Download the **pre-release** from [Releases](https://github.com/wu0ming/Clipori/releases) and unzip `Clipori-Windows-v0.2.0-preview.2-win-x64.zip`. Run `Clipori.Windows.exe`.
 
 If the release has not appeared, open the latest green [Actions](https://github.com/wu0ming/Clipori/actions) build and download `Clipori-Windows-win-x64`. A separate `Clipori-Windows-Debug-win-x64` build with symbols is provided for diagnosing failures.
 

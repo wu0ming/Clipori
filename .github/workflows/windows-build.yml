@@ -54,13 +54,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          Compress-Archive -Path 'publish/Clipori-Windows-win-x64/*' -DestinationPath 'Clipori-Windows-v0.2.0-preview.1-win-x64.zip'
-          gh release view v0.2.0-preview.1 --json tagName *> $null
+          Compress-Archive -Path 'publish/Clipori-Windows-win-x64/*' -DestinationPath 'Clipori-Windows-v0.2.0-preview.2-win-x64.zip'
+          gh release view v0.2.0-preview.2 --json tagName *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload v0.2.0-preview.1 'Clipori-Windows-v0.2.0-preview.1-win-x64.zip' --clobber
+            gh release upload v0.2.0-preview.2 'Clipori-Windows-v0.2.0-preview.2-win-x64.zip' --clobber
             if ($LASTEXITCODE -ne 0) { throw 'Failed to replace release asset' }
-            gh release edit v0.2.0-preview.1 --notes-file windows/RELEASE-NOTES.md --prerelease
+            gh release edit v0.2.0-preview.2 --notes-file windows/RELEASE-NOTES.md --prerelease
           } else {
-            gh release create v0.2.0-preview.1 'Clipori-Windows-v0.2.0-preview.1-win-x64.zip' --target "${{ github.sha }}" --title 'Clipori for Windows v0.2.0-preview.1' --notes-file windows/RELEASE-NOTES.md --prerelease
+            gh release create v0.2.0-preview.2 'Clipori-Windows-v0.2.0-preview.2-win-x64.zip' --target "${{ github.sha }}" --title 'Clipori for Windows v0.2.0-preview.2' --notes-file windows/RELEASE-NOTES.md --prerelease
           }
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release command failed' }

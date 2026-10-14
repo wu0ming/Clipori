@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Clipori.Windows</AssemblyName>
     <RootNamespace>Clipori.Windows</RootNamespace>
-    <Version>0.2.0-preview.1</Version>
+    <Version>0.2.0-preview.2</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />

@@ -1,10 +1,16 @@
-# Clipori for Windows v0.2.0-preview.1
+# Clipori for Windows v0.2.0-preview.2
 
 **Unofficial WPF port** of Clipori, originally by Panzer-Jack, under Apache-2.0.
 
 This is an **unsigned pre-release**, not a stable Windows build; user-device validation is still necessary.
 
-## Fixed from v0.1
+## Fixed in preview.2
+- Corrected the Win32 kernel32 GetCurrentThreadId import that prevented all automatic pastes; additional foreground/focused-child restoration and wait for released hotkey modifiers.
+- Added Windows regression check for GetCurrentThreadId export and P/Invoke resolution (prevents a repeat of EntryPointNotFoundException).
+- Closer macOS shelf UI: 237×233 layered-glass cards, larger titles, category chips, ordinal labels, vector mascot, hover motion and horizontal scrolling controls.
+- No GPL source copied from CopyQ or Ditto; Win32 behavior independently implemented.
+
+## Previously added in v0.2.0-preview.1
 - Proper Clipori violet-cat system tray icon.
 - Single-click direct paste (configurable) and Ctrl+click copy-only. Prior active window and focused input are remembered and restored when Windows permits. Secure/elevated targets may require manual Ctrl+V.
 - Hide shelf automatically when user clicks elsewhere.
