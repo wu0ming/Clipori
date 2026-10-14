@@ -14,7 +14,7 @@ The longer-term goal is to explore a **privacy-conscious AI context workspace**:
 
 ## Windows status
 
-**Early WPF source implementation; not yet a verified, signed production release.** The repository contains code for the following, but a successful build does not prove all interactions work:
+**Pre-release v0.2.0-preview.1 is published; Windows desktop end-to-end validation and code signing remain outstanding.** The repository contains code for the following, but a successful build does not prove all interactions work:
 
 | Area | Current status |
 | --- | --- |
@@ -24,15 +24,17 @@ The longer-term goal is to explore a **privacy-conscious AI context workspace**:
 | Floating shelf, global shortcut, basic search, pins, notes | Initial implementation; UX and tray behavior need validation |
 | Copy from a card | Implemented in code; user-side testing has shown copying works |
 | Direct paste back into the previously focused app | **Known issue: focus restoration / simulated paste can fail** |
-| AI retrieval, automatic classification, Markdown context export, automated organization | **Not implemented in the Windows port** |
+| AI search and optional automatic classification | Initial implementation; provider and privacy behavior still need on-device verification |
+| Star knowledge archive, Markdown export, cloud sync, automated knowledge organization | **Planned; not yet implemented** |
 
 ### Immediate priorities (P0/P1)
 
 - **P0 – reliability:** reliable focus-safe paste, Windows diagnostics/error logs, correct tray icon, hide shelf on outside click, and repeatable Windows smoke tests.
 - **P1 – clipboard fidelity:** support file paste and improve code recognition; continue parity and usability work without assuming these features are finished.
-- **Future research:** structured archive views, optional Markdown/JSON export (timestamp, source, type, user tags), selective AI context retrieval, opt-in AI organization, privacy controls and data deletion.
+- **M2 Star:** an independently persisted knowledge snapshot, selectable vault path, portable Markdown notes and an optional generated index.
+- **M3+ integrations:** optional Notion/Obsidian sync, browser clipping, permissioned AI context retrieval and AI organization.
 
-Keep local capture and AI network transmission separate. Clipboard history can include secrets; never silently send the entire database to an AI provider.
+See the [Pin/Star product roadmap](docs/PRODUCT-STAR-ROADMAP.md) and [machine-readable status](project-site/roadmap.json). Keep local capture and AI network transmission separate. Clipboard history can include secrets; never silently send the entire database to an AI provider.
 
 ## Build from source (Windows)
 
