@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "project": "Windows Clipboard Workspace",
+  "working_brand": "TBD",
+  "base_project": "Panzer-Jack/Clipori",
+  "repository": "wu0ming/Clipori",
+  "branch": "windows/wpf-port",
+  "last_reviewed": "2026-10-14",
+  "status_meanings": {
+    "implemented": "源码已实现/已有 CI 覆盖（不等于桌面实测）",
+    "validation": "已编码但仍需真实 Windows 验证",
+    "planned": "已规划未开始",
+    "research": "方案研究阶段"
+  },
+  "milestones": [
+    {
+      "id": "M0",
+      "title": "Windows 预览版基础",
+      "phase": "已有代码",
+      "status": "implemented",
+      "items": [
+        "剪贴板采集",
+        "SQLite + DPAPI",
+        "Pin",
+        "分类与检索",
+        "AI 问答基础",
+        "Release/CI"
+      ]
+    },
+    {
+      "id": "M1",
+      "title": "桌面端可靠性",
+      "phase": "下一优先级",
+      "status": "validation",
+      "items": [
+        "Win10 焦点粘贴测试",
+        "托盘/多屏/剪贴板兼容性",
+        "日志审查与隐私测试"
+      ]
+    },
+    {
+      "id": "M2",
+      "title": "Star 本地知识归档",
+      "phase": "近期规划",
+      "status": "planned",
+      "items": [
+        "Star 状态与独立快照",
+        "Markdown 导出",
+        "知识库自定义路径",
+        "原子写入/冲突处理",
+        "本地索引与检索"
+      ]
+    },
+    {
+      "id": "M3",
+      "title": "笔记库同步/网页剪藏",
+      "phase": "中期规划",
+      "status": "planned",
+      "items": [
+        "Notion 单向同步",
+        "Obsidian Vault 目标",
+        "浏览器扩展接入",
+        "HTML→Markdown 剪藏",
+        "可靠重试与冲突恢复"
+      ]
+    },
+    {
+      "id": "M4",
+      "title": "AI 上下文与自动整理",
+      "phase": "远期研究",
+      "status": "research",
+      "items": [
+        "用户选择性授权上下文",
+        "隐私过滤",
+        "自动摘要/关联/去重",
+        "可溯源 AI 检索",
+        "增值功能探索"
+      ]
+    }
+  ],
+  "features": [
+    {
+      "id": "clipboard",
+      "name": "文本/链接/图片/文件剪贴板采集",
+      "area": "基础",
+      "status": "implemented",
+      "evidence": "windows/README.md"
+    },
+    {
+      "id": "pin",
+      "name": "Pin 固定与置顶",
+      "area": "基础",
+      "status": "implemented",
+      "evidence": "ClipRepository.cs / MainWindow.xaml.cs"
+    },
+    {
+      "id": "ai_search",
+      "name": "AI 搜索 / 可选自动分类",
+      "area": "AI",
+      "status": "implemented",
+      "evidence": "AiService.cs"
+    },
+    {
+      "id": "security",
+      "name": "SQLite / DPAPI 数据存储保护",
+      "area": "基础",
+      "status": "implemented",
+      "evidence": "ClipRepository.cs"
+    },
+    {
+      "id": "logging",
+      "name": "诊断日志 / Debug 构建",
+      "area": "基础",
+      "status": "implemented",
+      "evidence": "Diagnostics.cs / windows-build.yml"
+    },
+    {
+      "id": "paste",
+      "name": "恢复焦点并直接粘贴",
+      "area": "质量验证",
+      "status": "validation",
+      "evidence": "MainWindow.xaml.cs"
+    },
+    {
+      "id": "tray",
+      "name": "托盘及外部点击隐藏",
+      "area": "质量验证",
+      "status": "validation",
+      "evidence": "MainWindow.xaml.cs"
+    },
+    {
+      "id": "star",
+      "name": "Star 收藏为永久知识记录",
+      "area": "知识归档",
+      "status": "planned"
+    },
+    {
+      "id": "markdown",
+      "name": "Markdown 单条归档 + 聚合索引",
+      "area": "知识归档",
+      "status": "planned"
+    },
+    {
+      "id": "path",
+      "name": "可自定义的知识库存放路径",
+      "area": "知识归档",
+      "status": "planned"
+    },
+    {
+      "id": "notion",
+      "name": "Notion 同步适配器",
+      "area": "同步",
+      "status": "planned"
+    },
+    {
+      "id": "webclip",
+      "name": "网页剪藏管道与浏览器扩展",
+      "area": "剪藏",
+      "status": "planned"
+    },
+    {
+      "id": "ai_memory",
+      "name": "AI 上下文、摘要与自动整理",
+      "area": "AI",
+      "status": "research"
+    }
+  ],
+  "editorial_note": "本文件是人工维护的规划状态；GitHub CI 自动成功不代表功能通过真实 Windows UI 测试。"
+}
