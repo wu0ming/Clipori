@@ -42,6 +42,7 @@ Check(IntPtr.Size == 8, "CI target is Windows x64");
 Check(Marshal.SizeOf<NativeMethods.INPUT>() == 40, "SendInput INPUT has the required x64 40-byte ABI size");
 Check(Marshal.OffsetOf<NativeMethods.INPUT>(nameof(NativeMethods.INPUT.ki)).ToInt32() == 8,
     "Win32 KEYBDINPUT union starts at the required x64 offset");
+Check(!new UserSettings().SingleClickPaste, "New installations default to double-click paste");
 Check(ShortcutService.TryParse("Ctrl+F", out _), "Local shortcut Ctrl+F is valid");
 Check(ShortcutService.HasConflict("Ctrl+F", "Ctrl+F", "Ctrl+T"), "Duplicate shortcuts rejected");
 Check(!ShortcutService.HasConflict("Ctrl+F", "Ctrl+N", "Ctrl+T"), "Distinct shortcuts accepted");

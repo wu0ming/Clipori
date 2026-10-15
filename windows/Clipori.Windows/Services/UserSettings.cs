@@ -54,8 +54,12 @@ public sealed class UserSettings
         {
             if (File.Exists(FilePath))
             {
-                var loaded = JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(FilePath)) ?? new();
-                if (loaded.InteractionSettingsVersion < 2)
+                string json = File.ReadAllText(FilePath);
+                var loaded = JsonSerializer.Deserialize<UserSettings>(json) ?? new();
+                using var doc = JsonDocument.Parse(json);
+                bool legacy = !doc.RootElement.TryGetProperty(nameof(InteractionSettingsVersion), out var version)
+                    || version.GetInt32() < 2;
+                if (legacy)
                 {
                     // v0.2 wrote SingleClickPaste=true by default; migrate existing users
                     // to the new v0.3 default while preserving all other preferences.
