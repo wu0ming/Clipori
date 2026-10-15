@@ -7,6 +7,7 @@ namespace Clipori.Windows.Services;
 
 public sealed class UserSettings
 {
+    public int InteractionSettingsVersion { get; set; } = 2;
     public bool SingleClickPaste { get; set; } = false;
     // Global show/hide shortcut (Win32 RegisterHotKey, default Ctrl+Alt+V).
     public uint GlobalHotkeyModifiers { get; set; } = 0x0003;
@@ -51,7 +52,19 @@ public sealed class UserSettings
     {
         try
         {
-            if (File.Exists(FilePath)) return JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(FilePath)) ?? new();
+            if (File.Exists(FilePath))
+            {
+                var loaded = JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(FilePath)) ?? new();
+                if (loaded.InteractionSettingsVersion < 2)
+                {
+                    // v0.2 wrote SingleClickPaste=true by default; migrate existing users
+                    // to the new v0.3 default while preserving all other preferences.
+                    loaded.SingleClickPaste = false;
+                    loaded.InteractionSettingsVersion = 2;
+                    loaded.Save();
+                }
+                return loaded;
+            }
         }
         catch (Exception ex) { Diagnostics.Error("settings.load", ex); }
         return new();

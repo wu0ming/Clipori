@@ -19,7 +19,7 @@ internal static class ShortcutService
         catch { return false; }
     }
 
-    public static bool Matches(string shortcut, KeyEventArgs args)
+    public static bool Matches(string shortcut, System.Windows.Input.KeyEventArgs args)
     {
         if (!TryParse(shortcut, out var g) || g == null) return false;
         return g.Matches(null, args);
