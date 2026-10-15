@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using Color = System.Windows.Media.Color;
 using Clipori.Windows.Services;
 
 namespace Clipori.Windows.Controls;

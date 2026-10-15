@@ -18,3 +18,16 @@
 - [ ] Test Office, Edge, VS Code, cmd, RDP, and elevated windows (fallback expected).
 - [ ] Test 100% / 150% / 200% DPI, multiple monitors, Windows 10 and Windows 11.
 - [ ] Confirm log rotation and crash diagnostics without clipboard contents.
+
+## v0.3.0-preview.1 checks
+- [ ] From a text editor summon Clipori; single-click a card and ensure it copies and opens details **once**, without inadvertently pasting.
+- [ ] Double-click a card quickly: no details modal opens, original caret receives pasted text.
+- [ ] Enable single-click paste in Settings and verify behavior switches; disable again.
+- [ ] Upgrade existing v0.2 settings with SingleClickPaste=true: verify v0.3 defaults to double-click paste.
+- [ ] Change global hotkey and confirm old one releases, new one summons; try an occupied combo and confirm rollback.
+- [ ] Customize Search, Note, Pause shortcuts, exit/restart, confirm they persist.
+- [ ] Search "不清楚" with a stored item containing "不是很清楚"; confirm fuzzy hit and visible highlight.
+- [ ] Search a mistyped English word and check ranking; rapid typing should not freeze the shelf.
+- [ ] Test 1000 history items including images: scroll should remain smooth; search should only render up to 70 matches.
+- [ ] Zoom a large image using +, -, 100%, fit and Ctrl+wheel; inspect clarity and memory.
+- [ ] Copy/paste from Notepad and Windows Explorer; logs should no longer report SendInput error 87.

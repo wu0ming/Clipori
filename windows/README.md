@@ -1,4 +1,4 @@
-# Clipori for Windows v0.2.0-preview.2 (unofficial)
+# Clipori for Windows v0.3.0-preview.1 (unofficial)
 
 **Build:** C# / WPF / .NET 10 · Windows 10/11 x64 · GitHub Actions
 **Status:** CI compiler, classifier/DPAPI regression tests, and both publish configurations verified. **Windows desktop end-to-end testing is still required.**
@@ -7,13 +7,16 @@ An unofficial Windows port inspired by [Panzer-Jack/Clipori](https://github.com/
 
 ## Install
 
-Download the **pre-release** from [Releases](https://github.com/wu0ming/Clipori/releases) and unzip `Clipori-Windows-v0.2.0-preview.2-win-x64.zip`. Run `Clipori.Windows.exe`.
+Download the **pre-release** from [Releases](https://github.com/wu0ming/Clipori/releases) and unzip `Clipori-Windows-v0.3.0-preview.1-win-x64.zip`. Run `Clipori.Windows.exe`.
 
 If the release has not appeared, open the latest green [Actions](https://github.com/wu0ming/Clipori/actions) build and download `Clipori-Windows-win-x64`. A separate `Clipori-Windows-Debug-win-x64` build with symbols is provided for diagnosing failures.
 
 ## Features
 - Local clipboard capture: text, URLs, recognized code (including Python), images and Windows Explorer file/folder selections (`CF_HDROP`).
-- **Single click:** attempts direct paste into the previously focused input (new default). **Ctrl-click:** copy without auto-pasting. **Double click:** paste. Change preference in Settings.
+- **Default click behavior (v0.3):** single-click a card copies it and opens its detail window after the double-click interval; double-click pastes it into the previously focused application. You may enable single-click paste under Settings. Ctrl-click copies and multi-selects without opening details.
+- Detail window shows full text, source, date, notes and category. Image details include 25–600% zoom with Ctrl+wheel and +/− buttons.
+- Keyword search uses a cached normalized index, 190ms debounce, first 70 result cards, virtualized horizontal rendering, fuzzy typo tolerance and Chinese subsequence matching. Matching characters are highlighted in the title/snippet.
+- Settings now support a configurable global wake shortcut (modifier combinations + A–Z/F1–F12) and three application-local shortcuts (search/new note/pause); conflicts are checked.
 - Remembers the previous foreground/focused control. Automatic hide when clicking outside; tray controls to reopen or inspect logs.
 - Keyword search, horizontal card shelf, hover animation, source-app labels, quick paste, pin, delete, add/edit notes and titles, preview.
 - Custom categories, multi-selection, drag cards onto category tabs, color changes and Pinboards with retention exemption.
@@ -30,8 +33,8 @@ If the release has not appeared, open the latest green [Actions](https://github.
 5. The port is in **pre-release**; it is not signed, independently audited, or pixel-perfect relative to the macOS original. UI, multi-monitor, Win10 focus behavior and clipboard reliability require on-device tests.
 
 ## Keyboard & mouse
-- Ctrl+Alt+V show/hide | Esc hide | Ctrl+F focus search | Ctrl+T pause/resume
-- Ctrl+N new note | Ctrl+1..9 quick paste | Left click card paste | Ctrl+click copy/select
+- Ctrl+Alt+V show/hide (customizable) | Esc hide | Ctrl+F focus search (customizable) | Ctrl+T pause/resume (customizable)
+- Ctrl+N new note (customizable) | Ctrl+1..9 quick paste | Left click copies + shows details | Double-click pastes | Ctrl+click copy/select
 - Ctrl+drag selected card(s) onto a category tab to assign multiple memories
 - Right click card for preview, edit, categorize, pin and delete
 - Tray icon to open main window, Settings, local log folder, pause, exit
