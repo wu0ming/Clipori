@@ -24,6 +24,7 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
     [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int virtualKey);
+    [DllImport("user32.dll")] public static extern uint GetDoubleClickTime();
     [DllImport("user32.dll", SetLastError = true)] public static extern uint SendInput(uint nInputs, [In] INPUT[] inputs, int cbSize);
 
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int left, top, right, bottom; }
@@ -36,8 +37,15 @@ internal static class NativeMethods
         public RECT rcCaret;
     }
 
-    [StructLayout(LayoutKind.Sequential)] public struct INPUT { public uint type; public InputUnion u; }
-    [StructLayout(LayoutKind.Explicit)] public struct InputUnion { [FieldOffset(0)] public KEYBDINPUT ki; }
+    // INPUT is 40 bytes on Windows x64: 4-byte type, 4-byte padding,
+    // and a 32-byte union containing KEYBDINPUT/MOUSEINPUT/HARDWAREINPUT.
+    // A too-small struct makes SendInput return ERROR_INVALID_PARAMETER (87).
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
+    public struct INPUT
+    {
+        [FieldOffset(0)] public uint type;
+        [FieldOffset(8)] public KEYBDINPUT ki;
+    }
     [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public UIntPtr dwExtraInfo; }
     private const uint INPUT_KEYBOARD = 1, KEYEVENTF_KEYUP = 0x0002;
     private const int VK_SHIFT = 0x10, VK_CONTROL = 0x11, VK_MENU = 0x12, VK_LWIN = 0x5B, VK_RWIN = 0x5C;
@@ -49,12 +57,15 @@ internal static class NativeMethods
         return false;
     }
     private static INPUT Key(ushort key, bool up) => new()
-    { type = INPUT_KEYBOARD, u = new InputUnion { ki = new KEYBDINPUT { wVk = key, dwFlags = up ? KEYEVENTF_KEYUP : 0 } } };
+    { type = INPUT_KEYBOARD, ki = new KEYBDINPUT { wVk = key, dwFlags = up ? KEYEVENTF_KEYUP : 0 } };
 
     public static bool SendControlV()
     {
         var events = new[] { Key(0x11, false), Key(0x56, false), Key(0x56, true), Key(0x11, true) };
-        return SendInput((uint)events.Length, events, Marshal.SizeOf<INPUT>()) == events.Length;
+        int inputSize = Marshal.SizeOf<INPUT>();
+        if (IntPtr.Size != 8 || inputSize != 40)
+            throw new PlatformNotSupportedException("Clipori paste requires a valid Windows x64 INPUT layout.");
+        return SendInput((uint)events.Length, events, inputSize) == events.Length;
     }
 
     public static IntPtr CaptureFocusedControl(IntPtr parentWindow)

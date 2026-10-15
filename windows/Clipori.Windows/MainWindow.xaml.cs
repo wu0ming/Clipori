@@ -39,6 +39,20 @@ namespace Clipori.Windows;
 
 public partial class MainWindow : Window
 {
+    public static readonly DependencyProperty SearchQueryProperty =
+        DependencyProperty.Register(nameof(SearchQuery), typeof(string), typeof(MainWindow),
+            new PropertyMetadata(""));
+    public string SearchQuery
+    {
+        get => (string)GetValue(SearchQueryProperty);
+        set => SetValue(SearchQueryProperty, value);
+    }
+    private readonly SearchEngine _searchEngine = new();
+    private readonly DispatcherTimer _searchDebounce = new() { Interval = TimeSpan.FromMilliseconds(190) };
+    private readonly DispatcherTimer _singleClickDelay = new();
+    private ClipEntry? _pendingSingle;
+    private Dictionary<string, string> _categoryColors = new();
+    private uint _registeredModifiers, _registeredKey;
     private readonly ClipRepository _repository;
     private readonly UserSettings _settings;
     private IntPtr _previousFocus;
@@ -74,6 +88,16 @@ public partial class MainWindow : Window
         _repository = new ClipRepository();
         _repository.Prune(_settings.RetentionDays);
         _all.AddRange(_repository.Load());
+        _searchEngine.Rebuild(_all);
+        _searchDebounce.Tick += (_, _) => { _searchDebounce.Stop(); RefreshCards(); };
+        _singleClickDelay.Interval = TimeSpan.FromMilliseconds((int)NativeMethods.GetDoubleClickTime() + 30);
+        _singleClickDelay.Tick += (_, _) =>
+        {
+            _singleClickDelay.Stop();
+            var selected = _pendingSingle;
+            _pendingSingle = null;
+            if (selected != null) { CopyEntry(selected); Preview(selected); }
+        };
         CardsList.ItemsSource = _visible;
         RefreshCustomCategories();
         RefreshCards();
@@ -119,9 +143,9 @@ public partial class MainWindow : Window
             MessageBox.Show("剪贴板监听注册失败。请重启应用。", "Clipori", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         Diagnostics.Info("win32.listener", "clipboard_listener_registered");
-        _registeredHotkey = NativeMethods.RegisterHotKey(_ownHandle, (int)NativeMethods.HOTKEY_ID,
-            NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, NativeMethods.VK_V);
+        _registeredHotkey = RegisterConfiguredHotkey(_settings.GlobalHotkeyModifiers, _settings.GlobalHotkeyKey);
         Diagnostics.Info("win32.hotkey", "registered=" + _registeredHotkey);
+        UpdateHotkeyLabels();
         if (!_registeredHotkey)
         {
             StatusLabel.Text = "全局快捷键被占用，可通过托盘图标打开";
@@ -238,7 +262,12 @@ public partial class MainWindow : Window
         try { _repository.Add(newItem); }
         catch { if (newItem.ImagePath != null) File.Delete(newItem.ImagePath); throw; }
         _all.Insert(0, newItem);
-        if (_all.Count > 1000) _all.RemoveAt(_all.Count - 1);
+        _searchEngine.Upsert(newItem);
+        if (_all.Count > 1000)
+        {
+            _searchEngine.Remove(_all[^1].Id);
+            _all.RemoveAt(_all.Count - 1);
+        }
         RefreshCards();
         Diagnostics.Info("clipboard.saved", "kind=" + newItem.Kind);
         if (_settings.AutoClassify) _ = AutoClassifyAsync(newItem);
@@ -254,6 +283,7 @@ public partial class MainWindow : Window
             {
                 item.CategoryName = chosen;
                 _repository.Save(item);
+                _searchEngine.Upsert(item);
                 RefreshCards();
                 Diagnostics.Info("ai.classified", "category_selected");
             }
@@ -265,37 +295,73 @@ public partial class MainWindow : Window
 
     private void RefreshCards()
     {
+        if (CardsList == null || CountLabel == null) return;
         string query = SearchBox?.Text.Trim() ?? "";
-        IEnumerable<ClipEntry> filtered = _all;
-        if (_category == "pinned") filtered = filtered.Where(c => c.IsPinned);
-        else if (_category.StartsWith("category:", StringComparison.Ordinal)) filtered = filtered.Where(c => c.CategoryName == _category["category:".Length..]);
-        else if (_category != "all") filtered = filtered.Where(c => c.Kind == _category);
-        if (!string.IsNullOrWhiteSpace(query))
-            filtered = filtered.Where(c => (c.Title + "\n" + c.Text + "\n" + c.Source)
-                .Contains(query, StringComparison.OrdinalIgnoreCase));
+        var matches = _searchEngine.Search(query, _category, 70);
+        // Rendering previously created up to 1,000 full WPF cards on each keystroke.
+        // Debouncing + bound search index + virtualized <=70 cards fixes the UI bottleneck.
         _visible.Clear();
         int index = 1;
-        foreach (var entry in filtered)
+        foreach (var match in matches)
         {
+            var entry = match.Entry;
             entry.DisplayIndex = index++;
+            entry.SearchSnippet = query.Length == 0 ? entry.Preview : match.Excerpt;
             _visible.Add(entry);
         }
-        CountLabel.Text = $"{_visible.Count} 条记忆";
+        CountLabel.Text = query.Length == 0
+            ? $"{_visible.Count} / {_searchEngine.Count} 条记忆"
+            : $"{_visible.Count} 条匹配（包含模糊结果）";
         EmptyHint.Visibility = _visible.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var b in new[] { AllTab, TextTab, LinkTab, CodeTab, ImageTab, FileTab, PinnedTab }.Concat(_dynamicCategoryButtons))
+        foreach (var tab in new[] { AllTab, TextTab, LinkTab, CodeTab, ImageTab, FileTab, PinnedTab }.Concat(_dynamicCategoryButtons))
         {
-            bool active = string.Equals(b.Tag?.ToString(), _category, StringComparison.Ordinal);
-            b.Background = active ? new SolidColorBrush(Color.FromRgb(235, 225, 249)) : Brushes.Transparent;
-            b.Foreground = active ? new SolidColorBrush(Color.FromRgb(113, 81, 173)) : new SolidColorBrush(Color.FromRgb(123, 115, 136));
-            if (!active && (b.Tag?.ToString() ?? "").StartsWith("category:"))
+            bool active = string.Equals(tab.Tag?.ToString(), _category, StringComparison.Ordinal);
+            tab.Background = active ? new SolidColorBrush(Color.FromRgb(235, 225, 249)) : Brushes.Transparent;
+            tab.Foreground = active ? new SolidColorBrush(Color.FromRgb(113, 81, 173)) : new SolidColorBrush(Color.FromRgb(123, 115, 136));
+            if (!active && (tab.Tag?.ToString() ?? "").StartsWith("category:", StringComparison.Ordinal))
             {
-                string catName = (b.Tag?.ToString() ?? "")["category:".Length..];
-                string? color = _repository.Categories().FirstOrDefault(c => c.Name == catName).Color;
-                if (color != null)
-                    try { b.Foreground = new SolidColorBrush((Color)System.Windows.Media.ColorConverter.ConvertFromString(color)); }
+                string name = (tab.Tag?.ToString() ?? "")["category:".Length..];
+                if (_categoryColors.TryGetValue(name, out var color))
+                    try { tab.Foreground = new SolidColorBrush((Color)System.Windows.Media.ColorConverter.ConvertFromString(color)); }
                     catch { }
             }
         }
+    }
+
+    private bool RegisterConfiguredHotkey(uint modifiers, uint vk)
+    {
+        bool okay = NativeMethods.RegisterHotKey(_ownHandle, (int)NativeMethods.HOTKEY_ID, modifiers, vk);
+        if (okay) { _registeredModifiers = modifiers; _registeredKey = vk; }
+        return okay;
+    }
+
+    private void ApplyChangedHotkey()
+    {
+        if (_ownHandle == IntPtr.Zero) return;
+        uint requestedMods = _settings.GlobalHotkeyModifiers, requestedKey = _settings.GlobalHotkeyKey;
+        if (_registeredHotkey && requestedMods == _registeredModifiers && requestedKey == _registeredKey) return;
+        uint previousMods = _registeredModifiers, previousKey = _registeredKey;
+        if (_registeredHotkey)
+            NativeMethods.UnregisterHotKey(_ownHandle, (int)NativeMethods.HOTKEY_ID);
+        bool okay = RegisterConfiguredHotkey(requestedMods, requestedKey);
+        if (!okay)
+        {
+            // Keep the original working shortcut if the user's new shortcut conflicts.
+            _registeredHotkey = RegisterConfiguredHotkey(previousMods, previousKey);
+            _settings.GlobalHotkeyModifiers = previousMods;
+            _settings.GlobalHotkeyKey = previousKey;
+            _settings.Save();
+            MessageBox.Show(this, "此快捷键已被占用，保留之前的快捷键。", "Clipori 快捷键");
+        }
+        else { _registeredHotkey = true; Diagnostics.Info("hotkey.changed", ShortcutService.DescribeGlobal(requestedMods, requestedKey)); }
+        UpdateHotkeyLabels();
+    }
+
+    private void UpdateHotkeyLabels()
+    {
+        string description = ShortcutService.DescribeGlobal(_settings.GlobalHotkeyModifiers, _settings.GlobalHotkeyKey);
+        _tray.Text = "Clipori for Windows · " + description;
+        SearchBox.ToolTip = "搜索剪贴板历史 / " + _settings.ShortcutSearch;
     }
 
     private void ToggleShelf()
@@ -477,8 +543,23 @@ public partial class MainWindow : Window
             else { _selection.Add(item.Id); item.IsSelected = true; }
             CopyEntry(item);
         }
-        else if (e.ClickCount >= 2 || _settings.SingleClickPaste) PasteEntry(item);
-        else CopyEntry(item);
+        else if (_settings.SingleClickPaste) PasteEntry(item);
+        else if (e.ClickCount >= 2)
+        {
+            _singleClickDelay.Stop();
+            _pendingSingle = null;
+            PasteEntry(item);
+        }
+        else
+        {
+            // Copy immediately, but defer opening a modal detail window until
+            // the double-click interval has elapsed. Otherwise the first click
+            // consumes the second click and makes double-click paste impossible.
+            CopyEntry(item);
+            _pendingSingle = item;
+            _singleClickDelay.Stop();
+            _singleClickDelay.Start();
+        }
         e.Handled = true;
     }
     private static ClipEntry? MenuEntry(object sender) => (sender as MenuItem)?.DataContext as ClipEntry;
@@ -497,7 +578,9 @@ public partial class MainWindow : Window
             if (entry.Kind != "image" && entry.Kind != "files") entry.Text = editor.NoteBody;
             entry.Notes = editor.NoteNotes;
             entry.Hash = HashBytes(Encoding.UTF8.GetBytes(entry.Text));
-            _repository.Save(entry); entry.NotifyChanged(); RefreshCards();
+            _repository.Save(entry);
+            _searchEngine.Upsert(entry);
+            entry.NotifyChanged(); RefreshCards();
             Diagnostics.Info("entry.edited", "kind=" + entry.Kind);
         }
         finally { _dialogOpen = false; }
@@ -517,7 +600,10 @@ public partial class MainWindow : Window
     private void AssignSelected(ClipEntry source, string category)
     {
         var selected = _selection.Contains(source.Id) ? _all.Where(c => _selection.Contains(c.Id)).ToList() : new List<ClipEntry> { source };
-        foreach (var item in selected) { item.CategoryName = category; _repository.Save(item); item.IsSelected = false; }
+        foreach (var item in selected)
+        {
+            item.CategoryName = category; _repository.Save(item); _searchEngine.Upsert(item); item.IsSelected = false;
+        }
         _selection.Clear(); RefreshCards(); Diagnostics.Info("category.assign", "count=" + selected.Count);
     }
     private void PinMenu_Click(object sender, RoutedEventArgs e)
@@ -531,6 +617,7 @@ public partial class MainWindow : Window
     {
         if (MenuEntry(sender) is not { } entry) return;
         _repository.Delete(entry);
+        _searchEngine.Remove(entry.Id);
         _all.Remove(entry);
         RefreshCards();
     }
@@ -539,7 +626,7 @@ public partial class MainWindow : Window
         _dialogOpen = true;
         try
         {
-            var dialog = new PreviewWindow(item) { Owner = this };
+            var dialog = new EntryDetailWindow(item, CopyEntry, PasteEntry) { Owner = this };
             dialog.ShowDialog();
         }
         finally { _dialogOpen = false; }
@@ -557,6 +644,7 @@ public partial class MainWindow : Window
         };
         _repository.Add(note);
         _all.Insert(0, note);
+        _searchEngine.Upsert(note);
         _category = "all";
         SearchBox.Clear();
         RefreshCards();
@@ -569,6 +657,7 @@ public partial class MainWindow : Window
     }
     private void RefreshCustomCategories()
     {
+        _categoryColors = _repository.Categories().ToDictionary(c => c.Name, c => c.Color);
         CustomCategories.Children.Clear();
         _dynamicCategoryButtons.Clear();
         foreach (var cat in _repository.Categories())
@@ -605,6 +694,7 @@ public partial class MainWindow : Window
             item.CategoryName = name;
             item.IsSelected = false;
             _repository.Save(item);
+            _searchEngine.Upsert(item);
         }
         _selection.Clear(); _dragged = false;
         RefreshCards(); e.Handled = true;
@@ -628,6 +718,8 @@ public partial class MainWindow : Window
                 }
             }
             Diagnostics.Verbose = _settings.DiagnosticsEnabled;
+            ApplyChangedHotkey();
+            _searchEngine.Rebuild(_all);
             RefreshCustomCategories();
             RefreshCards();
             _repository.Prune(_settings.RetentionDays);
@@ -662,7 +754,10 @@ public partial class MainWindow : Window
     }
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (CardsList != null) RefreshCards();
+        if (CardsList == null) return;
+        SearchQuery = SearchBox.Text.Trim();
+        _searchDebounce.Stop();
+        _searchDebounce.Start();
     }
     private void PauseButton_Click(object sender, RoutedEventArgs e) => ToggleCapture();
     private void ToggleCapture()
@@ -705,13 +800,20 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape) { Hide(); e.Handled = true; return; }
-        bool control = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
-        if (control && e.Key == Key.F) { SearchBox.Focus(); SearchBox.SelectAll(); e.Handled = true; }
-        else if (control && e.Key == Key.T) { ToggleCapture(); e.Handled = true; }
-        else if (control && e.Key == Key.N) { NewNote_Click(sender, new RoutedEventArgs()); e.Handled = true; }
-        else if (e.Key == Key.Enter && _visible.Count > 0 && !(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)))
+        if (e.Key == Key.Escape) { _singleClickDelay.Stop(); Hide(); e.Handled = true; return; }
+        if (ShortcutService.Matches(_settings.ShortcutSearch, e))
         {
+            SearchBox.Focus(); SearchBox.SelectAll(); e.Handled = true; return;
+        }
+        if (ShortcutService.Matches(_settings.ShortcutPause, e))
+        { ToggleCapture(); e.Handled = true; return; }
+        if (ShortcutService.Matches(_settings.ShortcutNewNote, e))
+        { NewNote_Click(sender, new RoutedEventArgs()); e.Handled = true; return; }
+        bool control = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+        if (e.Key == Key.Enter && _visible.Count > 0 &&
+            !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            _singleClickDelay.Stop();
             PasteEntry(_visible[0]); e.Handled = true;
         }
         else if (control && e.Key >= Key.D1 && e.Key <= Key.D9)
@@ -734,6 +836,8 @@ public partial class MainWindow : Window
             NativeMethods.RemoveClipboardFormatListener(_ownHandle);
             if (_registeredHotkey) NativeMethods.UnregisterHotKey(_ownHandle, (int)NativeMethods.HOTKEY_ID);
         }
+        _searchDebounce.Stop();
+        _singleClickDelay.Stop();
         _source?.RemoveHook(WndProc);
         _tray.Visible = false;
         var trayIcon = _tray.Icon;

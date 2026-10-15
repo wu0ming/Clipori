@@ -1,6 +1,7 @@
 <Window x:Class="Clipori.Windows.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:Clipori.Windows.Controls"
         Title="Clipori for Windows" Width="1240" Height="438"
         AllowsTransparency="True" Background="Transparent" WindowStyle="None"
         ShowInTaskbar="False" ResizeMode="NoResize" Topmost="True"
@@ -88,10 +89,10 @@
 
         <!-- Original Mac layout: horizontal cards with hover elevation -->
         <Grid Grid.Row="2">
-          <ScrollViewer x:Name="CardsScroller" Margin="21,0,21,0" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly" PreviewMouseWheel="CardsScroller_PreviewMouseWheel">
-            <ItemsControl x:Name="CardsList">
+          <ScrollViewer x:Name="CardsScroller" Margin="21,0,21,0" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly" CanContentScroll="True" PreviewMouseWheel="CardsScroller_PreviewMouseWheel">
+            <ItemsControl x:Name="CardsList" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
               <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                <ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
@@ -99,7 +100,7 @@
                           Padding="16,13" Margin="8,16,7,12" Cursor="Hand"
                           MouseLeftButtonDown="Card_MouseLeftButtonDown" MouseMove="Card_MouseMove"
                           MouseLeftButtonUp="Card_MouseLeftButtonUp"
-                          ToolTip="单击粘贴 · Ctrl+单击复制/选择 · 右键更多操作">
+                          ToolTip="单击复制并打开详情 · 双击粘贴 · Ctrl+单击多选">
                     <Border.Background>
                       <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                         <GradientStop Color="#FAFFFFFF" Offset="0"/>
@@ -152,9 +153,9 @@
                         <TextBlock Text="{Binding PinMark}" DockPanel.Dock="Right" FontSize="10" VerticalAlignment="Center" Margin="0,0,5,0"/>
                         <TextBlock Text="{Binding Source}" FontSize="10" FontWeight="SemiBold" Foreground="#967FB3" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                       </DockPanel>
-                      <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" Foreground="#393143" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxHeight="42" VerticalAlignment="Center"/>
+                      <TextBlock Grid.Row="1" controls:SearchHighlight.Text="{Binding Title}" controls:SearchHighlight.Query="{Binding SearchQuery, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" FontSize="15" FontWeight="SemiBold" Foreground="#393143" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxHeight="42" VerticalAlignment="Center"/>
                       <Grid Grid.Row="2" Margin="0,5,0,0" ClipToBounds="True">
-                        <TextBlock x:Name="ContentPreview" Text="{Binding Preview}" TextWrapping="Wrap" FontSize="12" Foreground="#796F83" LineHeight="19" MaxHeight="96" VerticalAlignment="Top"/>
+                        <TextBlock x:Name="ContentPreview" controls:SearchHighlight.Text="{Binding SearchSnippet}" controls:SearchHighlight.Query="{Binding SearchQuery, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" TextWrapping="Wrap" FontSize="12" Foreground="#796F83" LineHeight="19" MaxHeight="96" VerticalAlignment="Top"/>
                         <Border x:Name="ImageFrame" Visibility="Collapsed" Background="#EAE2F4" CornerRadius="9">
                           <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/>
                         </Border>
@@ -204,7 +205,7 @@
             <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="#6BCAA0" Margin="0,0,8,0"/>
             <TextBlock x:Name="StatusLabel" Text="正在悄悄记住" FontSize="11" Foreground="#90849C" VerticalAlignment="Center"/>
           </StackPanel>
-          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#9C94A9" FontSize="10" Text="Ctrl+Alt+V 唤醒  ·  单击粘贴 / Ctrl+单击复制  ·  双击粘贴  ·  Esc 收起"/>
+          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#9C94A9" FontSize="10" Text="Ctrl+Alt+V 唤醒（可自定义）  ·  单击详情 / 双击粘贴  ·  Esc 收起"/>
         </Grid>
       </Grid>
     </Border>

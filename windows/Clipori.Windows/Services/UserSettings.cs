@@ -7,7 +7,14 @@ namespace Clipori.Windows.Services;
 
 public sealed class UserSettings
 {
-    public bool SingleClickPaste { get; set; } = true;
+    public bool SingleClickPaste { get; set; } = false;
+    // Global show/hide shortcut (Win32 RegisterHotKey, default Ctrl+Alt+V).
+    public uint GlobalHotkeyModifiers { get; set; } = 0x0003;
+    public uint GlobalHotkeyKey { get; set; } = 0x56;
+    // WPF local commands, editable in Settings.
+    public string ShortcutSearch { get; set; } = "Ctrl+F";
+    public string ShortcutNewNote { get; set; } = "Ctrl+N";
+    public string ShortcutPause { get; set; } = "Ctrl+T";
     public bool HideOnDeactivate { get; set; } = true;
     public bool CapturePaused { get; set; }
     public bool AutoStart { get; set; }

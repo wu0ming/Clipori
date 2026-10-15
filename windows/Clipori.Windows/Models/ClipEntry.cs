@@ -38,6 +38,29 @@ public sealed class ClipEntry : INotifyPropertyChanged
         "files" => string.Join("\n", FileNames.Take(4)),
         _ => (Text + (string.IsNullOrEmpty(Notes) ? "" : "\n" + Notes)).Replace('\r', ' ').Replace('\n', ' ')
     };
+    private string? _searchSnippet;
+    public string SearchSnippet { get => _searchSnippet ?? Preview; set { _searchSnippet = value; Changed(); } }
+    public BitmapImage? DetailImage => LoadImage(false);
+    private BitmapImage? LoadImage(bool thumbnail)
+    {
+        if (Kind != "image" || string.IsNullOrEmpty(ImagePath) || !File.Exists(ImagePath)) return null;
+        try
+        {
+            byte[] bytes = File.ReadAllBytes(ImagePath);
+            if (ImagePath.EndsWith(".dat", StringComparison.OrdinalIgnoreCase))
+                bytes = Protection.UnprotectBytes(bytes);
+            using var stream = new MemoryStream(bytes);
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.StreamSource = stream;
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.DecodePixelWidth = thumbnail ? 420 : 0;
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch (Exception ex) { Diagnostics.Error("image.load", ex); return null; }
+    }
     public string TypeLabel => Kind switch { "image" => "图片", "files" => "文件", "link" => "链接", "code" => "代码", _ => "文字" };
     public string Glyph => Kind switch { "image" => "▧", "files" => "▣", "link" => "↗", "code" => "</>", _ => "≡" };
     public string When => CreatedUtc.ToLocalTime().ToString("MM/dd HH:mm");
@@ -50,30 +73,9 @@ public sealed class ClipEntry : INotifyPropertyChanged
             catch { return Array.Empty<string>(); }
         }
     }
-    public BitmapImage? Thumbnail
-    {
-        get
-        {
-            if (Kind != "image" || string.IsNullOrEmpty(ImagePath) || !File.Exists(ImagePath)) return null;
-            try
-            {
-                byte[] bytes = File.ReadAllBytes(ImagePath);
-                if (ImagePath.EndsWith(".dat", StringComparison.OrdinalIgnoreCase))
-                    bytes = Protection.UnprotectBytes(bytes);
-                using var stream = new MemoryStream(bytes);
-                var image = new BitmapImage();
-                image.BeginInit();
-                image.StreamSource = stream;
-                image.CacheOption = BitmapCacheOption.OnLoad;
-                image.DecodePixelWidth = 420;
-                image.EndInit();
-                image.Freeze();
-                return image;
-            }
-            catch (Exception ex) { Diagnostics.Error("image.thumbnail", ex); return null; }
-        }
-    }
+    private BitmapImage? _thumbnail;
+    public BitmapImage? Thumbnail => _thumbnail ??= LoadImage(true);
     public event PropertyChangedEventHandler? PropertyChanged;
-    public void NotifyChanged() { Changed(nameof(Preview)); Changed(nameof(Title)); Changed(nameof(CategoryName)); Changed(nameof(CategoryLabel)); }
+    public void NotifyChanged() { Changed(nameof(Preview)); Changed(nameof(Title)); Changed(nameof(CategoryName)); Changed(nameof(CategoryLabel)); Changed(nameof(SearchSnippet)); }
     private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

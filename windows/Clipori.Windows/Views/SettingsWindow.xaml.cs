@@ -17,6 +17,22 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         _settings = settings;
         _repository = repository;
+        foreach (var option in new[] { ("Ctrl + Alt", 3u), ("Ctrl + Shift", 6u),
+            ("Alt + Shift", 5u), ("Ctrl + Alt + Shift", 7u) })
+            HotkeyModifiers.Items.Add(new ComboBoxItem { Content = option.Item1, Tag = option.Item2 });
+        foreach (char letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            HotkeyKey.Items.Add(new ComboBoxItem { Content = letter.ToString(), Tag = (uint)letter });
+        for (uint f = 0; f < 12; f++)
+            HotkeyKey.Items.Add(new ComboBoxItem { Content = "F" + (f + 1), Tag = 0x70u + f });
+        HotkeyModifiers.SelectedItem = HotkeyModifiers.Items.Cast<ComboBoxItem>()
+            .FirstOrDefault(c => (uint)c.Tag == settings.GlobalHotkeyModifiers)
+            ?? HotkeyModifiers.Items[0];
+        HotkeyKey.SelectedItem = HotkeyKey.Items.Cast<ComboBoxItem>()
+            .FirstOrDefault(c => (uint)c.Tag == settings.GlobalHotkeyKey)
+            ?? HotkeyKey.Items.Cast<ComboBoxItem>().First(c => (uint)c.Tag == 0x56u);
+        SearchShortcut.Text = settings.ShortcutSearch;
+        NewNoteShortcut.Text = settings.ShortcutNewNote;
+        PauseShortcut.Text = settings.ShortcutPause;
         ClickPaste.IsChecked = settings.SingleClickPaste;
         AutoHide.IsChecked = settings.HideOnDeactivate;
         AutoLaunch.IsChecked = settings.AutoStart;
@@ -67,6 +83,22 @@ public partial class SettingsWindow : Window
     {
         if (!int.TryParse(Retention.Text.Trim(), out int days) || !(days == 0 || days == 1 || days == 7 || days == 30 || days == 365))
         { MessageBox.Show(this, "历史保留天数必须为 0、1、7、30 或 365。"); return; }
+        if (ShortcutService.HasConflict(SearchShortcut.Text, NewNoteShortcut.Text, PauseShortcut.Text))
+        {
+            MessageBox.Show(this, "应用内快捷键格式无效或存在冲突。请使用如 Ctrl+F 的组合，并保证各项不同。");
+            return;
+        }
+        if (HotkeyModifiers.SelectedItem is not ComboBoxItem mods ||
+            HotkeyKey.SelectedItem is not ComboBoxItem key)
+        {
+            MessageBox.Show(this, "请选择完整的全局快捷键。");
+            return;
+        }
+        _settings.GlobalHotkeyModifiers = (uint)mods.Tag;
+        _settings.GlobalHotkeyKey = (uint)key.Tag;
+        _settings.ShortcutSearch = SearchShortcut.Text.Trim();
+        _settings.ShortcutNewNote = NewNoteShortcut.Text.Trim();
+        _settings.ShortcutPause = PauseShortcut.Text.Trim();
         _settings.RetentionDays = days;
         _settings.SingleClickPaste = ClickPaste.IsChecked == true;
         _settings.HideOnDeactivate = AutoHide.IsChecked == true;
